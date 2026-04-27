@@ -1,0 +1,14 @@
+Django==5.0
+djangorestframework==3.14.0
+django-cors-headers>=4.3.1
+python-decouple==3.8
+pytest==8.0.0
+pytest-django==4.7.0
+channels>=4.1.0
+channels-redis>=4.1.0
+daphne>=4.1.0
+redis==5.0.1
+asgiref==3.7.2
+psycopg2-binary==2.9.9
+djangorestframework-simplejwt==5.3.1
+django-filter==24.2

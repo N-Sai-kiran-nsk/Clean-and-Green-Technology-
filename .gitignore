@@ -1,0 +1,35 @@
+# Backend
+backend/db.sqlite3
+backend/.env
+backend/venv/
+backend/__pycache__/
+backend/.vscode/
+backend/*.pyc
+backend/media/
+backend/.DS_Store
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+frontend/.env
+frontend/.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local

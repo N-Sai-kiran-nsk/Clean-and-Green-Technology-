@@ -1,0 +1,60 @@
+:host {
+  display: block;
+  min-height: 100vh;
+}
+
+.app-shell {
+  min-height: 100vh;
+  background: var(--app-bg);
+  color: var(--app-text);
+}
+
+.desktop-header {
+  background: #ffffff;
+  border-bottom: 1px solid var(--app-border);
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+}
+
+.nav-link {
+  color: var(--app-muted);
+  text-decoration: none;
+  transition: color 0.2s ease;
+  padding: 0.5rem 0;
+  border-bottom: 2px solid transparent;
+}
+
+.nav-link:hover {
+  color: #6366f1; /* App primary purple */
+}
+
+.active-link {
+  color: #6366f1;
+  border-bottom-color: #6366f1;
+}
+
+body.dark-theme .desktop-header {
+  background: var(--app-surface);
+}
+
+body.dark-theme .text-dark {
+  color: var(--app-text) !important;
+}
+
+.btn-light {
+  background-color: var(--app-surface-alt);
+  border: 1px solid var(--app-border);
+  color: var(--app-text);
+}
+
+.btn-light:hover {
+  background-color: var(--app-border);
+  color: var(--app-text);
+}
+
+@media (max-width: 767.98px) {
+  .desktop-nav {
+    display: none !important; /* Will add a hamburger menu later if needed */
+  }
+}

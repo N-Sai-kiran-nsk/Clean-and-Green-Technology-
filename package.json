@@ -1,0 +1,13 @@
+{
+  "name": "civic-issue-reporting",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run django\" \"npm run angular\"",
+    "django": "cd backend && python manage.py runserver",
+    "angular": "cd frontend && ng serve"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

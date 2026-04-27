@@ -1,0 +1,58 @@
+<div class="app-shell">
+  <header *ngIf="isAuthenticated" class="desktop-header shadow-sm">
+    <div class="container-xl d-flex justify-content-between align-items-center py-3">
+      <div class="brand d-flex align-items-center gap-2">
+        <div class="brand-icon bg-primary text-white rounded d-flex justify-content-center align-items-center" style="width: 36px; height: 36px;">
+          <i class="bi bi-building"></i>
+        </div>
+        <h5 class="mb-0 fw-bold text-dark">CivicPortal</h5>
+      </div>
+      <nav class="desktop-nav d-none d-md-flex gap-4 fw-medium">
+        <a routerLink="/dashboard" routerLinkActive="active-link" class="nav-link">Dashboard</a>
+        <a routerLink="/issues/report" routerLinkActive="active-link" class="nav-link">Report Issue</a>
+        <a routerLink="/issues" routerLinkActive="active-link" class="nav-link">Map & Issues</a>
+      </nav>
+      <div class="user-actions d-flex align-items-center gap-3">
+        <!-- Admin Dropdown -->
+        <div *ngIf="isAdmin()" class="dropdown">
+          <button class="btn btn-outline-primary d-flex align-items-center gap-2 px-3 py-2 fw-medium dropdown-toggle" type="button" id="adminDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-shield-lock"></i>
+            <span class="d-none d-md-inline">Admin</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0" aria-labelledby="adminDropdown">
+            <li><a class="dropdown-item py-2" routerLink="/admin/manage-users"><i class="bi bi-people me-2 text-primary"></i>Manage Users</a></li>
+            <li><a class="dropdown-item py-2" routerLink="/admin/departments"><i class="bi bi-building me-2 text-primary"></i>Manage Departments</a></li>
+          </ul>
+        </div>
+        
+        <a routerLink="/settings" class="btn btn-light rounded-circle p-2 d-flex justify-content-center align-items-center" style="width: 40px; height: 40px;" title="Settings">
+          <i class="bi bi-person"></i>
+        </a>
+        <button class="btn btn-outline-danger d-flex align-items-center gap-2 px-3 py-2 fw-medium" (click)="logout()" title="Logout">
+          <i class="bi bi-box-arrow-right"></i>
+          <span class="d-none d-md-inline">Logout</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Public Header for unauthenticated users -->
+  <header *ngIf="!isAuthenticated" class="desktop-header shadow-sm">
+    <div class="container-xl d-flex justify-content-between align-items-center py-3">
+      <div class="brand d-flex align-items-center gap-2">
+        <div class="brand-icon bg-primary text-white rounded d-flex justify-content-center align-items-center" style="width: 36px; height: 36px;">
+          <i class="bi bi-building"></i>
+        </div>
+        <h5 class="mb-0 fw-bold text-dark">CivicPortal</h5>
+      </div>
+      <div class="user-actions d-flex gap-3">
+        <a routerLink="/auth/login" class="btn btn-outline-primary fw-medium px-4">Sign in</a>
+        <a routerLink="/auth/register" class="btn btn-primary fw-medium px-4">Register</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-shell__main bg-light min-vh-100 pb-5">
+    <router-outlet></router-outlet>
+  </main>
+</div>

@@ -1,0 +1,27 @@
+services:
+  # 1. Django Backend
+  - type: web
+    name: civic-backend
+    env: python
+    region: ohio
+    buildCommand: "cd backend && pip install -r requirements.txt && python manage.py migrate"
+    startCommand: "cd backend && daphne -b 0.0.0.0 -p $PORT config.asgi:application"
+    envVars:
+      - key: DEBUG
+        value: "False"
+      - key: ALLOWED_HOSTS
+        value: "*"
+      # SQLite fallback for free tier (Render will reset SQLite on deploy unless a disk is attached, 
+      # but it works perfectly for testing).
+      - key: DATABASE_ENGINE
+        value: "django.db.backends.sqlite3"
+
+  # 2. Angular Frontend
+  - type: web
+    name: civic-frontend
+    env: static
+    region: ohio
+    buildCommand: "cd frontend && npm install && npm run build"
+    staticPublishPath: "./frontend/dist/civic-issue-reporting/browser"
+    # Note: You may need to adjust the staticPublishPath slightly depending on your Angular version
+    # Modern Angular puts it in dist/project-name/browser
