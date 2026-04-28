@@ -2,6 +2,7 @@ services:
   # 1. Django Backend
   - type: web
     name: civic-backend
+    plan: free
     env: python
     region: ohio
     buildCommand: "cd backend && pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate"
@@ -24,6 +25,7 @@ services:
   # 2. Angular Frontend
   - type: web
     name: civic-frontend
+    plan: free
     env: static
     buildCommand: "cd frontend && npm install && npm run build"
     staticPublishPath: "./frontend/dist/civic-issue-reporting/browser"
@@ -31,11 +33,13 @@ services:
   # 3. Redis (for WebSockets/Notifications)
   - type: redis
     name: civic-redis
+    plan: free
     region: ohio
     ipAllowList: [] # empty means allow all traffic internally
 
 databases:
   - name: civic-db
+    plan: free
     region: ohio
     databaseName: civic
     user: civic
