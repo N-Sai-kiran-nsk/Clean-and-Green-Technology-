@@ -29,14 +29,14 @@ services:
     buildCommand: "cd frontend && npm install && npm run build"
     staticPublishPath: "./frontend/dist/civic-issue-reporting/browser"
 
-databases:
-  - name: civic-db
-    region: ohio
-    databaseName: civic
-    user: civic
-
   # 3. Redis (for WebSockets/Notifications)
   - type: redis
     name: civic-redis
     region: ohio
     ipAllowList: [] # empty means allow all traffic internally
+
+databases:
+  - name: civic-db
+    region: ohio
+    databaseName: civic
+    user: civic
