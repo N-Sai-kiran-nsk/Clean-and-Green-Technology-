@@ -5,6 +5,7 @@ Django settings for civic-issue-reporting project.
 import os
 from pathlib import Path
 from decouple import config
+import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -41,6 +42,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -71,9 +73,18 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 
 # Database
+DATABASE_URL = config('DATABASE_URL', default=None)
 DATABASE_ENGINE = config('DATABASE_ENGINE', default='django.db.backends.sqlite3')
 
-if DATABASE_ENGINE == 'django.db.backends.sqlite3':
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
+    }
+elif DATABASE_ENGINE == 'django.db.backends.sqlite3':
     DATABASES = {
         'default': {
             'ENGINE': DATABASE_ENGINE,
@@ -166,8 +177,19 @@ CORS_ALLOW_CREDENTIALS = True
 # Channels Configuration
 ASGI_APPLICATION = 'config.asgi.application'
 
+REDIS_URL = config('REDIS_URL', default=None)
 REDIS_HOST = config('REDIS_HOST', default=None)
-if REDIS_HOST:
+
+if REDIS_URL:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [REDIS_URL],
+            },
+        }
+    }
+elif REDIS_HOST:
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
