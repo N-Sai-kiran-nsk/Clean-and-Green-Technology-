@@ -25,7 +25,6 @@ services:
   - type: web
     name: civic-frontend
     env: static
-    region: ohio
     buildCommand: "cd frontend && npm install && npm run build"
     staticPublishPath: "./frontend/dist/civic-issue-reporting/browser"
 
