@@ -25,7 +25,6 @@ services:
   # 2. Angular Frontend
   - type: web
     name: civic-frontend
-    plan: free
     env: static
     buildCommand: "cd frontend && npm install && npm run build"
     staticPublishPath: "./frontend/dist/civic-issue-reporting/browser"
