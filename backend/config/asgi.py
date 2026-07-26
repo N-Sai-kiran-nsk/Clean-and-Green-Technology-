@@ -3,16 +3,14 @@ ASGI config for civic-issue-reporting project.
 """
 
 import os
-
 from django.core.asgi import get_asgi_application
-from channels.routing import ProtocolTypeRouter, URLRouter
-from django.urls import path
-
-from config.websocket_auth import JWTAuthMiddlewareStack
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
-
 django_asgi_app = get_asgi_application()
+
+from channels.routing import ProtocolTypeRouter, URLRouter
+from django.urls import path
+from config.websocket_auth import JWTAuthMiddlewareStack
 
 # Import consumers after django setup
 from apps.notifications.consumers import NotificationConsumer
