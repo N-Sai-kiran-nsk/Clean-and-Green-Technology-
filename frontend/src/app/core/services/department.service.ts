@@ -22,11 +22,13 @@ export interface DepartmentResponse {
   results: Department[];
 }
 
+import { environment } from '../../../environments/environment';
+
 @Injectable({
   providedIn: 'root'
 })
 export class DepartmentService {
-  private apiUrl = 'http://localhost:8000/api/departments';
+  private get apiUrl() { return `${environment.apiUrl}/departments`; }
 
   constructor(private http: HttpClient) { }
 

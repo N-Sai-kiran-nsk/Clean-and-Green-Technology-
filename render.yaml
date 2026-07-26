@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: civic-portal
+    env: python
+    buildCommand: "./build.sh"
+    startCommand: "cd backend && daphne -b 0.0.0.0 -p $PORT config.asgi:application"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: NODE_VERSION
+        value: 20.10.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: civic-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: USE_S3
+        value: "False"
+
+databases:
+  - name: civic-db
+    databaseName: civic_db
+    user: civic_user

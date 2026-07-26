@@ -195,6 +195,25 @@ export class LoginComponent {
   }
 
   private readError(error: any, fallback: string): string {
-    return error?.error?.message || error?.message || fallback;
+    if (error?.error) {
+      if (typeof error.error === 'string') {
+        return error.error;
+      }
+      if (error.error.detail) {
+        return error.error.detail;
+      }
+      if (error.error.non_field_errors?.[0]) {
+        return error.error.non_field_errors[0];
+      }
+      if (error.error.message) {
+        return error.error.message;
+      }
+      const firstKey = Object.keys(error.error)[0];
+      if (firstKey && Array.isArray(error.error[firstKey])) {
+        const fieldName = firstKey.charAt(0).toUpperCase() + firstKey.slice(1);
+        return `${fieldName}: ${error.error[firstKey][0]}`;
+      }
+    }
+    return error?.message || fallback;
   }
 }

@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject } from '@angular/core';
 import { FormsModule, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
+import { environment } from '../../../../environments/environment';
 
 @Component({
   selector: 'app-manage-departments',
@@ -110,7 +111,7 @@ import { HttpClient } from '@angular/common/http';
 export class ManageDepartmentsComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly fb = inject(FormBuilder);
-  private apiUrl = 'http://localhost:8000/api/departments/';
+  private get apiUrl() { return `${environment.apiUrl}/departments/`; }
 
   departments: any[] = [];
   loading = false;

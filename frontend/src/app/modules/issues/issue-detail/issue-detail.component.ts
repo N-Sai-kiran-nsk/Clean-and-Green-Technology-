@@ -164,6 +164,8 @@ export class IssueDetailComponent implements OnInit {
     this.loading = true;
     this.errorMessage = '';
 
+    const numId = isNaN(Number(this.issueId)) ? this.issueId : Number(this.issueId);
+
     const result = this.invokeFallback(this.issueService as any, [
       'getIssueById',
       'loadIssue',
@@ -172,7 +174,7 @@ export class IssueDetailComponent implements OnInit {
       'findIssue',
       'loadIssueById',
       'getIssueDetails',
-    ], this.issueId);
+    ], numId);
 
     this.consumeResult(
       result,
@@ -197,6 +199,8 @@ export class IssueDetailComponent implements OnInit {
       return;
     }
 
+    const numId = isNaN(Number(this.issueId)) ? this.issueId : Number(this.issueId);
+
     const result = this.invokeFallback(this.issueService as any, [
       'updateIssueStatus',
       'setIssueStatus',
@@ -207,7 +211,7 @@ export class IssueDetailComponent implements OnInit {
       'changeStatus',
       'resolveIssue',
       'markResolved',
-    ], this.issueId, status);
+    ], numId, status);
 
     this.consumeMutationResult(result, () => {
       if (this.issue) {

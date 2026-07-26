@@ -20,6 +20,10 @@ export class AppComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
+    this.authService.currentUser$.subscribe(user => {
+      this.user = user;
+      this.isAuthenticated = this.authService.isAuthenticated();
+    });
     this.checkAuth();
     // Check saved theme preference
     if (localStorage.getItem('theme') === 'dark') {

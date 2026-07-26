@@ -25,11 +25,13 @@ export interface WSError {
 
 export type WSMessage = WSNotification | WSUnreadCount | WSError;
 
+import { environment } from '../../../environments/environment';
+
 @Injectable({
   providedIn: 'root'
 })
 export class WebSocketService implements OnDestroy {
-  private wsUrl = 'ws://localhost:8000/ws/notifications/';
+  private get wsUrl() { return `${environment.wsUrl}/notifications/`; }
   private socket$: WebSocketSubject<WSMessage> | null = null;
   private destroy$ = new Subject<void>();
   

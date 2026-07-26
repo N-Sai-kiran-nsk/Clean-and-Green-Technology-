@@ -24,11 +24,13 @@ export interface Issue {
   has_upvoted?: boolean;
 }
 
+import { environment } from '../../../environments/environment';
+
 @Injectable({
   providedIn: 'root'
 })
 export class IssueService {
-  private apiUrl = 'http://localhost:8000/api/issues';
+  private get apiUrl() { return `${environment.apiUrl}/issues`; }
 
   constructor(private http: HttpClient) { }
 

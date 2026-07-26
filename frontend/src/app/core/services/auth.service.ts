@@ -17,6 +17,8 @@ export interface UserProfile {
   is_active?: boolean;
 }
 
+import { environment } from '../../../environments/environment';
+
 export interface AuthResponse {
   access: string;
   refresh: string;
@@ -27,7 +29,7 @@ export interface AuthResponse {
   providedIn: 'root'
 })
 export class AuthService {
-  private apiUrl = 'http://localhost:8000/api/auth';
+  private get apiUrl() { return `${environment.apiUrl}/auth`; }
   private tokenSubject = new BehaviorSubject<string | null>(this.getStoredAccessToken());
   private userSubject = new BehaviorSubject<UserProfile | null>(this.getStoredUser());
   public token$ = this.tokenSubject.asObservable();

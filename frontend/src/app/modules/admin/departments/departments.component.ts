@@ -274,8 +274,8 @@ export class DepartmentsComponent implements OnInit {
 
   loadDepartments(): void {
     this.departmentService.getDepartments().subscribe({
-      next: (response) => {
-        this.departments = response.results || [];
+      next: (response: any) => {
+        this.departments = Array.isArray(response) ? response : (response?.results || response?.data || []);
         this.loading = false;
       },
       error: () => {

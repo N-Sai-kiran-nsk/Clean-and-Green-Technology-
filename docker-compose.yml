@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=False
+      - SECRET_KEY=production-secret-key-change-me
+      - DATABASE_URL=postgres://civic_user:civic_pass@db:5432/civic_db
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+    command: >
+      sh -c "python manage.py migrate &&
+             daphne -b 0.0.0.0 -p 8000 config.asgi:application"
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: civic_db
+      POSTGRES_USER: civic_user
+      POSTGRES_PASSWORD: civic_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+
+volumes:
+  postgres_data:

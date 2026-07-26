@@ -12,11 +12,13 @@ export interface AppNotification {
   created_at: string;
 }
 
+import { environment } from '../../../environments/environment';
+
 @Injectable({
   providedIn: 'root'
 })
 export class NotificationService {
-  private apiUrl = 'http://localhost:8000/api/notifications';
+  private get apiUrl() { return `${environment.apiUrl}/notifications`; }
 
   constructor(private http: HttpClient) { }
 
