@@ -142,7 +142,7 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def set_admin(self, request, pk=None):
         """Grant admin privileges to a user"""
-        if not request.user.is_superuser:
+        if not (request.user.is_superuser or request.user.is_staff):
             return Response({'detail': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
         
         user = self.get_object()
@@ -161,7 +161,7 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def remove_admin(self, request, pk=None):
         """Remove admin privileges from a user"""
-        if not request.user.is_superuser:
+        if not (request.user.is_superuser or request.user.is_staff):
             return Response({'detail': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
         
         user = self.get_object()
@@ -178,7 +178,7 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def staff_list(self, request):
         """Get list of staff/admin users"""
-        if not request.user.is_superuser:
+        if not (request.user.is_superuser or request.user.is_staff):
             return Response({'detail': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
         
         staff = User.objects.filter(is_staff=True) | User.objects.filter(is_department_staff=True)

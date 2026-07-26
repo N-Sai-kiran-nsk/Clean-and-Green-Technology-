@@ -19,11 +19,14 @@ def issue_updated_signal(sender, instance, created, **kwargs):
     """
     if not created and getattr(instance, '_status_changed', False):
         # Broadcast status updates to all connected clients
-        broadcast_issue_update(
-            issue_id=instance.id,
-            status=instance.status,
-            updated_by=instance.assigned_to.username if instance.assigned_to else 'Admin'
-        )
+        try:
+            broadcast_issue_update(
+                issue_id=instance.id,
+                status=instance.status,
+                updated_by=instance.assigned_to.username if instance.assigned_to else 'Admin'
+            )
+        except Exception as e:
+            print(f"Failed to broadcast issue update via WebSocket: {e}")
 
         # Create notification for assigned user
         if instance.assigned_to:
@@ -77,12 +80,15 @@ def comment_added_signal(sender, instance, created, **kwargs):
     """
     if created:
         # Send WebSocket notification
-        send_comment_notification(
-            issue_id=instance.issue.id,
-            comment_id=instance.id,
-            comment_text=instance.text,
-            author=instance.author.username
-        )
+        try:
+            send_comment_notification(
+                issue_id=instance.issue.id,
+                comment_id=instance.id,
+                comment_text=instance.text,
+                author=instance.author.username
+            )
+        except Exception as e:
+            print(f"Failed to send comment notification via WebSocket: {e}")
 
         # Create notifications for relevant users
         users_to_notify = set()
