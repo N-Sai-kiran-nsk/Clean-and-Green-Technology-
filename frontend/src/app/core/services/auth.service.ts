@@ -34,6 +34,7 @@ export class AuthService {
   private userSubject = new BehaviorSubject<UserProfile | null>(this.getStoredUser());
   public token$ = this.tokenSubject.asObservable();
   public user$ = this.userSubject.asObservable();
+  public currentUser$ = this.userSubject.asObservable();
 
   constructor(private http: HttpClient) { }
 

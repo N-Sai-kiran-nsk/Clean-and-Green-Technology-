@@ -20,7 +20,7 @@ export class AppComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.authService.currentUser$.subscribe(user => {
+    this.authService.user$.subscribe((user: UserProfile | null) => {
       this.user = user;
       this.isAuthenticated = this.authService.isAuthenticated();
     });

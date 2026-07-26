@@ -178,7 +178,7 @@ export class IssueDetailComponent implements OnInit {
 
     this.consumeResult(
       result,
-      (value) => {
+      (value: any) => {
         this.issue = this.unwrapSingle(value);
         this.loading = false;
 
