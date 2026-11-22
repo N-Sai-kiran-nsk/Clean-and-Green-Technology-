@@ -17,6 +17,10 @@ services:
         generateValue: true
       - key: DEBUG
         value: "False"
+      - key: ALLOWED_HOSTS
+        value: ".onrender.com,localhost,127.0.0.1"
+      - key: NODE_OPTIONS
+        value: "--max-old-space-size=512"
       - key: USE_S3
         value: "False"
 
