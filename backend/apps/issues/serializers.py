@@ -16,15 +16,37 @@ class IssueAttachmentSerializer(serializers.ModelSerializer):
         model = IssueAttachment
         fields = ('id', 'issue', 'file', 'uploaded_at')
 
+    def validate_file(self, value):
+        content_type = (value.content_type or '').lower()
+        if not content_type.startswith('image/'):
+            raise serializers.ValidationError('Only image files are allowed.')
+        if value.size > 10 * 1024 * 1024:
+            raise serializers.ValidationError('Image must be 10 MB or smaller.')
+        return value
+
 
 class IssueCreateSerializer(serializers.ModelSerializer):
+    photo = serializers.FileField(write_only=True, required=False)
+
     class Meta:
         model = Issue
-        fields = ('id', 'title', 'description', 'status', 'priority', 'category', 'location', 'latitude', 'longitude', 'department')
+        fields = ('id', 'title', 'description', 'status', 'priority', 'category', 'location', 'latitude', 'longitude', 'department', 'photo')
         read_only_fields = ('id', 'status', 'priority')
 
+    def validate_photo(self, value):
+        content_type = (value.content_type or '').lower()
+        if not content_type.startswith('image/'):
+            raise serializers.ValidationError('Only image files are allowed.')
+        if value.size > 10 * 1024 * 1024:
+            raise serializers.ValidationError('Image must be 10 MB or smaller.')
+        return value
+
     def create(self, validated_data):
-        return super().create(validated_data)
+        photo = validated_data.pop('photo', None)
+        issue = super().create(validated_data)
+        if photo:
+            IssueAttachment.objects.create(issue=issue, file=photo)
+        return issue
 
 
 class IssueSerializer(serializers.ModelSerializer):

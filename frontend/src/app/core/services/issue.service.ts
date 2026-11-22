@@ -46,7 +46,17 @@ export class IssueService {
     return this.http.get<Issue>(`${this.apiUrl}/${id}/`);
   }
 
-  createIssue(data: any): Observable<Issue> {
+  createIssue(data: any, photo?: File | null): Observable<Issue> {
+    if (photo) {
+      const formData = new FormData();
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          formData.append(key, String(value));
+        }
+      });
+      formData.append('photo', photo, photo.name);
+      return this.http.post<Issue>(`${this.apiUrl}/`, formData);
+    }
     return this.http.post<Issue>(`${this.apiUrl}/`, data);
   }
 
@@ -68,5 +78,11 @@ export class IssueService {
 
   toggleUpvote(id: number): Observable<any> {
     return this.http.post(`${this.apiUrl}/${id}/toggle_upvote/`, {});
+  }
+
+  uploadAttachment(id: number, file: File): Observable<any> {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+    return this.http.post(`${this.apiUrl}/${id}/upload_attachment/`, formData);
   }
 }

@@ -3,6 +3,7 @@ import { Component, OnInit, inject, AfterViewInit } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { isObservable } from 'rxjs';
+import { DomSanitizer, SafeUrl } from '@angular/platform-browser';
 import { LeafletModule } from '@asymmetrik/ngx-leaflet';
 import * as L from 'leaflet';
 import { DepartmentService } from '../../../core/services/department.service';
@@ -98,8 +99,14 @@ import { IssueService } from '../../../core/services/issue.service';
             </div>
 
             <div class="col-12">
-              <label class="form-label fw-semibold">Pin location on map</label>
-              <p class="text-muted small mb-2">Click on the map to set the location coordinates, or enter coordinates manually below.</p>
+              <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2">
+                <label class="form-label fw-semibold mb-0">Pin location on map</label>
+                <button type="button" class="btn btn-sm btn-outline-primary" (click)="useMyLocation()" [disabled]="loading">
+                  Use my current location
+                </button>
+              </div>
+              <p class="text-muted small mb-2">Click the map to drop a pin, use your device location, or enter coordinates manually.</p>
+              <div *ngIf="locationMessage" class="small text-primary mb-2">{{ locationMessage }}</div>
               <div class="map-container border rounded-3" style="height: 300px; overflow: hidden;">
                 <div
                   leaflet
@@ -158,6 +165,24 @@ import { IssueService } from '../../../core/services/issue.service';
               </div>
             </div>
 
+            <div class="col-12">
+              <label for="photo" class="form-label fw-semibold">Photo of the issue</label>
+              <p class="text-muted small mb-2">Add one clear, well-lit photo showing the problem. Images up to 10 MB are supported.</p>
+              <input
+                id="photo"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                class="form-control"
+                (change)="onPhotoSelected($event)"
+              />
+              <div *ngIf="photoError" class="small text-danger mt-1">{{ photoError }}</div>
+              <div *ngIf="photoPreview" class="mt-3">
+                <img [src]="photoPreview" alt="Selected issue photo" class="img-thumbnail" style="max-height: 220px; object-fit: cover;" />
+                <button type="button" class="btn btn-sm btn-outline-danger ms-2 align-top" (click)="clearPhoto()">Remove photo</button>
+              </div>
+            </div>
+
             <div class="col-12 col-lg-4">
               <label for="contactName" class="form-label fw-semibold">Your name</label>
               <input id="contactName" type="text" class="form-control" formControlName="contactName" />
@@ -194,11 +219,17 @@ export class ReportIssueComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly issueService = inject(IssueService);
   private readonly departmentService = inject(DepartmentService);
+  private readonly sanitizer = inject(DomSanitizer);
 
   departments: any[] = [];
   loading = false;
   departmentsLoading = false;
   departmentErrorMessage = '';
+  locationMessage = '';
+  photoFile: File | null = null;
+  photoPreview: SafeUrl | null = null;
+  photoError = '';
+  private photoObjectUrl: string | null = null;
   errorMessage = '';
   successMessage = '';
 
@@ -242,7 +273,75 @@ export class ReportIssueComponent implements OnInit {
   onMapClick(event: L.LeafletMouseEvent): void {
     const { lat, lng } = event.latlng;
     this.form.patchValue({ latitude: lat, longitude: lng });
+    this.locationMessage = 'Pin set on the map.';
     this.updateMarker(lat, lng);
+  }
+
+  useMyLocation(): void {
+    if (!navigator.geolocation) {
+      this.locationMessage = 'Your browser does not support location access.';
+      return;
+    }
+
+    this.locationMessage = 'Getting your current location...';
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        this.form.patchValue({
+          latitude: lat,
+          longitude: lng,
+          location: this.form.value.location || `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+        });
+        this.map?.setView([lat, lng], 16);
+        this.updateMarker(lat, lng);
+        this.locationMessage = 'Location set from your device.';
+      },
+      () => {
+        this.locationMessage = 'Location access was denied or unavailable. You can still click the map to set a pin.';
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }
+
+  onPhotoSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    this.photoError = '';
+
+    if (!file) {
+      this.clearPhoto();
+      return;
+    }
+
+    if (!(file.type || '').toLowerCase().startsWith('image/')) {
+      this.photoError = 'Please choose an image file.';
+      input.value = '';
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      this.photoError = 'Please choose an image smaller than 10 MB.';
+      input.value = '';
+      return;
+    }
+
+    this.photoFile = file;
+    if (this.photoObjectUrl) {
+      URL.revokeObjectURL(this.photoObjectUrl);
+    }
+    this.photoObjectUrl = URL.createObjectURL(file);
+    this.photoPreview = this.sanitizer.bypassSecurityTrustUrl(this.photoObjectUrl);
+  }
+
+  clearPhoto(): void {
+    if (this.photoObjectUrl) {
+      URL.revokeObjectURL(this.photoObjectUrl);
+    }
+    this.photoObjectUrl = null;
+    this.photoFile = null;
+    this.photoPreview = null;
+    this.photoError = '';
   }
 
   private updateMarker(lat: number, lng: number): void {
@@ -316,24 +415,30 @@ export class ReportIssueComponent implements OnInit {
       'saveIssue',
       'create',
       'submit',
-    ], payload);
+    ], payload, this.photoFile);
 
     this.consumeMutationResult(
       result,
-      () => {
+      (created) => {
         this.loading = false;
         this.successMessage = 'Your issue has been submitted.';
+        const createdId = created?.id ?? created?._id ?? created?.issueId;
         this.form.reset({
           title: '',
           description: '',
           departmentId: '',
+          category: '',
           location: '',
+          latitude: null,
+          longitude: null,
           priority: 'medium',
           contactName: '',
           contactPhone: '',
           contactEmail: '',
         });
-        this.router.navigate(['/issues']);
+        this.clearPhoto();
+        this.locationMessage = '';
+        this.router.navigate(createdId != null ? ['/issues/detail', createdId] : ['/issues']);
       },
       (error) => {
         console.error('Error submitting issue:', error);
@@ -403,26 +508,26 @@ export class ReportIssueComponent implements OnInit {
     onError(result);
   }
 
-  private consumeMutationResult(result: unknown, onSuccess: () => void, onError: (err?: any) => void): void {
+  private consumeMutationResult(result: unknown, onSuccess: (value: any) => void, onError: (err?: any) => void): void {
     if (!result) {
-      onSuccess();
+      onSuccess(undefined);
       return;
     }
 
     if (isObservable(result)) {
       result.subscribe({
-        next: () => onSuccess(),
+        next: (value) => onSuccess(value),
         error: (err) => onError(err),
       });
       return;
     }
 
     if (typeof (result as Promise<unknown>).then === 'function') {
-      (result as Promise<unknown>).then(() => onSuccess()).catch((err) => onError(err));
+      (result as Promise<unknown>).then((value) => onSuccess(value)).catch((err) => onError(err));
       return;
     }
 
-    onSuccess();
+    onSuccess(result);
   }
 
   private normalizeArray(value: unknown): any[] {

@@ -99,6 +99,17 @@ import { AuthService } from '../../../core/services/auth.service';
                   </div>
                 </dd>
               </div>
+
+              <div class="col-12" *ngIf="issueAttachments.length">
+                <dt class="text-muted small text-uppercase">Photos</dt>
+                <dd class="mb-0">
+                  <div class="d-flex flex-wrap gap-2 mt-2">
+                    <a *ngFor="let attachment of issueAttachments; trackBy: trackByAttachment" [href]="attachmentUrl(attachment)" target="_blank" rel="noopener">
+                      <img [src]="attachmentUrl(attachment)" alt="Issue photo" class="rounded border" style="width: 130px; height: 100px; object-fit: cover;" />
+                    </a>
+                  </div>
+                </dd>
+              </div>
             </dl>
           </div>
         </div>
@@ -141,6 +152,24 @@ export class IssueDetailComponent implements OnInit {
   get isAdmin(): boolean {
     return this.authService.isAdmin();
   }
+
+  get issueAttachments(): any[] {
+    const attachments = this.issue?.attachments ?? this.issue?.files ?? [];
+    return Array.isArray(attachments) ? attachments : [];
+  }
+
+  attachmentUrl(attachment: any): string {
+    const value = attachment?.file ?? attachment?.url ?? attachment;
+    if (typeof value !== 'string' || !value) {
+      return '';
+    }
+    if (value.startsWith('http') || value.startsWith('/')) {
+      return value;
+    }
+    return `/media/${value}`;
+  }
+
+  trackByAttachment = (index: number, attachment: any): string | number => attachment?.id ?? index;
 
   issueId = '';
   issue: any = null;
