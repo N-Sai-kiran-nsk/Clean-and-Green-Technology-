@@ -140,6 +140,7 @@ elif FRONTEND_DIST_DIR.exists():
 
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 WHITENOISE_INDEX_FILE = True
+WHITENOISE_ROOT = STATIC_ROOT
 
 # Cloud Storage Configuration (AWS S3 / Cloudinary or Local Fallback)
 USE_S3 = config('USE_S3', default=False, cast=bool)
