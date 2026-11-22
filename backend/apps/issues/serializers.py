@@ -21,11 +21,9 @@ class IssueCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Issue
         fields = ('id', 'title', 'description', 'status', 'priority', 'category', 'location', 'latitude', 'longitude', 'department')
-        read_only_fields = ('id',)
+        read_only_fields = ('id', 'status', 'priority')
 
     def create(self, validated_data):
-        validated_data['status'] = validated_data.get('status', 'open')
-        validated_data['priority'] = validated_data.get('priority', 'medium')
         return super().create(validated_data)
 
 
@@ -44,6 +42,11 @@ class IssueSerializer(serializers.ModelSerializer):
             'location', 'latitude', 'longitude', 'reported_by', 'assigned_to',
             'department', 'created_at', 'updated_at', 'resolved_at', 'attachments', 'comments',
             'upvotes_count', 'has_upvoted'
+        )
+        read_only_fields = (
+            'id', 'status', 'priority', 'reported_by', 'assigned_to',
+            'created_at', 'updated_at', 'resolved_at', 'attachments',
+            'comments', 'upvotes_count', 'has_upvoted',
         )
 
     def get_upvotes_count(self, obj):

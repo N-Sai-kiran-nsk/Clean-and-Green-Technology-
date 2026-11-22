@@ -412,7 +412,7 @@ export class ManageIssuesComponent implements OnInit {
   }
 
   rejectIssue(issue: IssueRecord): void {
-    this.updateIssueStatus(issue, 'rejected');
+    this.updateIssueStatus(issue, 'closed');
   }
 
   resolveIssue(issue: IssueRecord): void {

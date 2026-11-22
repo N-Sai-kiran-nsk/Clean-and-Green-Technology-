@@ -213,17 +213,24 @@ export class IssueDetailComponent implements OnInit {
       'markResolved',
     ], numId, status);
 
-    this.consumeMutationResult(result, () => {
-      if (this.issue) {
-        this.issue = {
-          ...this.issue,
-          status,
-          issueStatus: status,
-          state: status,
-          currentStatus: status,
-        };
+    this.consumeMutationResult(
+      result,
+      () => {
+        this.errorMessage = '';
+        if (this.issue) {
+          this.issue = {
+            ...this.issue,
+            status,
+            issueStatus: status,
+            state: status,
+            currentStatus: status,
+          };
+        }
+      },
+      () => {
+        this.errorMessage = 'The status could not be updated. Please try again.';
       }
-    });
+    );
   }
 
   toggleUpvote(): void {
@@ -276,7 +283,7 @@ export class IssueDetailComponent implements OnInit {
   }
 
   displayDate(issue: any): string {
-    const value = issue?.createdAt ?? issue?.createdDate ?? issue?.date ?? issue?.submittedAt;
+    const value = issue?.created_at ?? issue?.createdAt ?? issue?.createdDate ?? issue?.date ?? issue?.submittedAt;
     if (!value) {
       return 'Unknown date';
     }
@@ -318,8 +325,9 @@ export class IssueDetailComponent implements OnInit {
     const lng = Number(issue?.longitude ?? issue?.lng ?? -74.006);
     return {
       layers: [
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png', {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          maxZoom: 19
         })
       ],
       zoom: 15,
@@ -377,22 +385,19 @@ export class IssueDetailComponent implements OnInit {
     onSuccess(result);
   }
 
-  private consumeMutationResult(result: unknown, onSuccess: () => void): void {
+  private consumeMutationResult(result: unknown, onSuccess: () => void, onError: () => void): void {
     if (!result) {
       onSuccess();
       return;
     }
 
     if (isObservable(result)) {
-      result.subscribe({
-        next: () => onSuccess(),
-        error: () => onSuccess(),
-      });
+      result.subscribe({ next: () => onSuccess(), error: () => onError() });
       return;
     }
 
     if (typeof (result as Promise<unknown>).then === 'function') {
-      (result as Promise<unknown>).then(() => onSuccess()).catch(() => onSuccess());
+      (result as Promise<unknown>).then(() => onSuccess()).catch(() => onError());
       return;
     }
 

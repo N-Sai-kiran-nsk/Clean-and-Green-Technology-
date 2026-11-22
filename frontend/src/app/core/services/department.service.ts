@@ -33,7 +33,7 @@ export class DepartmentService {
   constructor(private http: HttpClient) { }
 
   getDepartments(): Observable<DepartmentResponse> {
-    return this.http.get<DepartmentResponse>(`${this.apiUrl}/`);
+    return this.http.get<DepartmentResponse>(`${this.apiUrl}/`, { params: { page_size: '100' } });
   }
 
   getDepartment(id: number): Observable<Department> {

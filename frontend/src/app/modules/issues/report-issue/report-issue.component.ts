@@ -60,6 +60,7 @@ import { IssueService } from '../../../core/services/issue.service';
                   {{ departmentLabel(department) }}
                 </option>
               </select>
+              <div *ngIf="departmentErrorMessage" class="small text-danger mt-1">{{ departmentErrorMessage }}</div>
               <div class="invalid-feedback d-block" *ngIf="isInvalid('departmentId')">
                 Please choose a department.
               </div>
@@ -197,6 +198,7 @@ export class ReportIssueComponent implements OnInit {
   departments: any[] = [];
   loading = false;
   departmentsLoading = false;
+  departmentErrorMessage = '';
   errorMessage = '';
   successMessage = '';
 
@@ -216,8 +218,9 @@ export class ReportIssueComponent implements OnInit {
 
   mapOptions: L.MapOptions = {
     layers: [
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+      L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19
       })
     ],
     zoom: 13,
@@ -271,10 +274,12 @@ export class ReportIssueComponent implements OnInit {
       (items) => {
         this.departments = items;
         this.departmentsLoading = false;
+        this.departmentErrorMessage = items.length ? '' : 'No departments are available yet.';
       },
       () => {
         this.departments = [];
         this.departmentsLoading = false;
+        this.departmentErrorMessage = 'Unable to load departments. Please try again.';
       }
     );
   }

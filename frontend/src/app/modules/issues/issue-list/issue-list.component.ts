@@ -3,7 +3,9 @@ import { Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { isObservable } from 'rxjs';
+import * as L from 'leaflet';
 import { IssueService } from '../../../core/services/issue.service';
+import { DepartmentService } from '../../../core/services/department.service';
 
 @Component({
   selector: 'app-issue-list',
@@ -44,6 +46,7 @@ import { IssueService } from '../../../core/services/issue.service';
               type="search"
               class="form-control form-control-lg"
               [(ngModel)]="searchTerm"
+              (ngModelChange)="onFiltersChanged()"
               name="searchTerm"
               placeholder="Search by title, location, or description"
             />
@@ -51,17 +54,18 @@ import { IssueService } from '../../../core/services/issue.service';
 
           <div class="col-12 col-md-6 col-lg-2">
             <label for="status" class="form-label fw-semibold">Status</label>
-            <select id="status" class="form-select form-select-lg" [(ngModel)]="selectedStatus" name="selectedStatus">
+            <select id="status" class="form-select form-select-lg" [(ngModel)]="selectedStatus" (ngModelChange)="onFiltersChanged()" name="selectedStatus">
               <option value="all">All statuses</option>
               <option value="open">Open</option>
-              <option value="in progress">In progress</option>
+              <option value="in_progress">In progress</option>
               <option value="resolved">Resolved</option>
+              <option value="closed">Closed</option>
             </select>
           </div>
 
           <div class="col-12 col-md-6 col-lg-2">
             <label for="priority" class="form-label fw-semibold">Priority</label>
-            <select id="priority" class="form-select form-select-lg" [(ngModel)]="selectedPriority" name="selectedPriority">
+            <select id="priority" class="form-select form-select-lg" [(ngModel)]="selectedPriority" (ngModelChange)="onFiltersChanged()" name="selectedPriority">
               <option value="all">All priorities</option>
               <option value="critical">Critical</option>
               <option value="high">High</option>
@@ -76,11 +80,12 @@ import { IssueService } from '../../../core/services/issue.service';
               id="department"
               class="form-select form-select-lg"
               [(ngModel)]="selectedDepartment"
+              (ngModelChange)="onFiltersChanged()"
               name="selectedDepartment"
             >
               <option value="all">All departments</option>
-              <option *ngFor="let department of departmentOptions; trackBy: trackByDepartment" [value]="department">
-                {{ department }}
+              <option *ngFor="let department of departmentOptions; trackBy: trackByDepartment" [value]="department?.id">
+                {{ departmentName(department) }}
               </option>
             </select>
           </div>
@@ -170,9 +175,11 @@ import { IssueService } from '../../../core/services/issue.service';
 })
 export class IssueListComponent implements OnInit {
   private readonly issueService = inject(IssueService);
+  private readonly departmentService = inject(DepartmentService);
   private readonly route = inject(ActivatedRoute);
 
   issues: any[] = [];
+  departments: any[] = [];
   loading = false;
   errorMessage = '';
   searchTerm = '';
@@ -190,7 +197,19 @@ export class IssueListComponent implements OnInit {
         this.selectedPriority = params['priority'].toLowerCase();
       }
     });
+    this.loadDepartments();
     this.loadIssues();
+  }
+
+  private loadDepartments(): void {
+    this.departmentService.getDepartments().subscribe({
+      next: (response: any) => {
+        this.departments = Array.isArray(response) ? response : (response?.results ?? []);
+      },
+      error: () => {
+        this.departments = [];
+      }
+    });
   }
 
   get filteredIssues(): any[] {
@@ -208,7 +227,7 @@ export class IssueListComponent implements OnInit {
         this.selectedStatus === 'all' || this.normalizeStatus(issue) === this.selectedStatus.toLowerCase();
 
       const matchesDepartment =
-        this.selectedDepartment === 'all' || this.departmentLabel(issue).toLowerCase() === this.selectedDepartment.toLowerCase();
+        this.selectedDepartment === 'all' || String(issue?.department ?? '') === this.selectedDepartment;
 
       const issuePriority = (issue?.priority || '').toLowerCase();
       const matchesPriority = 
@@ -219,17 +238,13 @@ export class IssueListComponent implements OnInit {
   }
 
   get filteredIssuesWithCoords(): any[] {
-    return this.filteredIssues.filter(issue => issue.latitude && issue.longitude);
+    return this.filteredIssues.filter(issue => issue.latitude != null && issue.longitude != null);
   }
 
-  get departmentOptions(): string[] {
-    return Array.from(
-      new Set(
-        this.issues
-          .map((issue) => this.departmentLabel(issue))
-          .filter((department) => Boolean(department))
-      )
-    ).sort((left, right) => left.localeCompare(right));
+  get departmentOptions(): any[] {
+    return [...this.departments].sort((left, right) =>
+      String(this.departmentName(left)).localeCompare(String(this.departmentName(right)))
+    );
   }
 
   loadIssues(): void {
@@ -252,6 +267,7 @@ export class IssueListComponent implements OnInit {
       (items) => {
         this.issues = items;
         this.loading = false;
+        this.onFiltersChanged();
       },
       () => {
         this.issues = [];
@@ -266,6 +282,10 @@ export class IssueListComponent implements OnInit {
     this.selectedStatus = 'all';
     this.selectedDepartment = 'all';
     this.selectedPriority = 'all';
+    this.onFiltersChanged();
+  }
+
+  onFiltersChanged(): void {
     if (this.viewMode === 'map') {
       this.updateMapMarkers();
     }
@@ -282,13 +302,6 @@ export class IssueListComponent implements OnInit {
   }
 
   private initMap(): void {
-    // @ts-ignore - L is loaded globally from index.html
-    const L = (window as any)['L'];
-    if (!L) {
-      console.error('Leaflet is not loaded!');
-      return;
-    }
-
     if (this.map) {
       this.map.remove();
     }
@@ -298,9 +311,11 @@ export class IssueListComponent implements OnInit {
     const defaultLng = -122.4194;
 
     this.map = L.map('issuesMap').setView([defaultLat, defaultLng], 12);
+    setTimeout(() => this.map?.invalidateSize(), 0);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19
     }).addTo(this.map);
 
     this.markersLayer = L.layerGroup().addTo(this.map);
@@ -318,15 +333,13 @@ export class IssueListComponent implements OnInit {
 
   private updateMapMarkers(): void {
     if (!this.map || !this.markersLayer) return;
-    
-    // @ts-ignore
-    const L = (window as any)['L'];
+
     this.markersLayer.clearLayers();
 
     const issues = this.filteredIssuesWithCoords;
     if (issues.length === 0) return;
 
-    const bounds = L.latLngBounds();
+    const bounds = L.latLngBounds([]);
 
     issues.forEach(issue => {
       const lat = parseFloat(issue.latitude);
@@ -338,17 +351,17 @@ export class IssueListComponent implements OnInit {
         // Build popup content
         const popupContent = `
           <div style="min-width: 200px;">
-            <h6 style="margin-bottom: 5px;"><strong>${this.issueTitle(issue)}</strong></h6>
+            <h6 style="margin-bottom: 5px;"><strong>${this.escapeHtml(this.issueTitle(issue))}</strong></h6>
             <div style="margin-bottom: 8px;">
               <span style="background-color: #6c757d; color: white; padding: 2px 6px; border-radius: 10px; font-size: 11px;">
-                ${this.statusLabel(issue)}
+                ${this.escapeHtml(this.statusLabel(issue))}
               </span>
               <span style="background-color: #0d6efd; color: white; padding: 2px 6px; border-radius: 10px; font-size: 11px;">
-                ${this.departmentLabel(issue)}
+                ${this.escapeHtml(this.departmentLabel(issue))}
               </span>
             </div>
             <p style="font-size: 12px; margin-bottom: 10px; max-height: 60px; overflow: hidden; text-overflow: ellipsis;">
-              ${this.issueDescription(issue)}
+                ${this.escapeHtml(this.issueDescription(issue))}
             </p>
             <a href="/issues/detail/${this.issueId(issue)}" class="btn btn-sm btn-primary" style="font-size: 12px; padding: 3px 8px;">View Details</a>
           </div>
@@ -379,18 +392,27 @@ export class IssueListComponent implements OnInit {
   }
 
   statusLabel(issue: any): string {
-    const status = this.normalizeStatus(issue) || 'open';
+    const status = (this.normalizeStatus(issue) || 'open').replace(/_/g, ' ');
     return status.charAt(0).toUpperCase() + status.slice(1);
   }
 
-  departmentLabel(issue: any): string {
-    const department = issue?.department;
-
+  departmentName(department: any): string {
     if (department && typeof department === 'object') {
       return this.toText(department?.name ?? department?.departmentName ?? department?.title ?? 'General');
     }
 
-    return this.toText(issue?.departmentName ?? department ?? 'General');
+    const match = this.departments.find(
+      (item) => String(item?.id ?? item?._id ?? item?.departmentId ?? '') === String(department ?? '')
+    );
+    if (match) {
+      return this.toText(match?.name ?? match?.departmentName ?? match?.title ?? 'General');
+    }
+
+    return this.toText(department ?? 'General');
+  }
+
+  departmentLabel(issue: any): string {
+    return this.departmentName(issue?.departmentName ?? issue?.department ?? 'General');
   }
 
   locationLabel(issue: any): string {
@@ -398,7 +420,7 @@ export class IssueListComponent implements OnInit {
   }
 
   displayDate(issue: any): string {
-    const value = issue?.createdAt ?? issue?.createdDate ?? issue?.date ?? issue?.submittedAt;
+    const value = issue?.created_at ?? issue?.createdAt ?? issue?.createdDate ?? issue?.date ?? issue?.submittedAt;
     if (!value) {
       return 'Unknown date';
     }
@@ -421,8 +443,8 @@ export class IssueListComponent implements OnInit {
     return this.issueId(issue) ?? index;
   };
 
-  trackByDepartment(index: number, department: string): string {
-    return department || String(index);
+  trackByDepartment(index: number, department: any): string | number {
+    return department?.id ?? String(index);
   }
 
   private invokeFallback(target: any, methodNames: string[], ...args: any[]): unknown {
@@ -488,9 +510,17 @@ export class IssueListComponent implements OnInit {
   private normalizeStatus(issue: any): string {
     return this.toText(issue?.status ?? issue?.issueStatus ?? issue?.state ?? issue?.currentStatus)
       .toLowerCase()
-      .replace(/[_-]+/g, ' ')
-      .replace(/\s+/g, ' ')
+      .replace(/[\s-]+/g, '_')
       .trim();
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   private toText(value: unknown): string {

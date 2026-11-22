@@ -6,13 +6,14 @@ from .serializers import DepartmentSerializer
 class IsAdminOrReadOnly(permissions.BasePermission):
     def has_permission(self, request, view):
         if request.method in permissions.SAFE_METHODS:
-            return request.user and request.user.is_authenticated
+            return True
         return request.user and (request.user.is_staff or request.user.is_superuser)
 
 class DepartmentViewSet(viewsets.ModelViewSet):
     queryset = Department.objects.filter(is_active=True)
     serializer_class = DepartmentSerializer
     permission_classes = [IsAdminOrReadOnly]
+    filterset_fields = ['is_active']
 
     def get_queryset(self):
         if not self.request.user.is_superuser:

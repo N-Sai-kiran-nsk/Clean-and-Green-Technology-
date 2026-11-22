@@ -1,5 +1,6 @@
 from django.contrib.auth import authenticate, get_user_model
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 from rest_framework_simplejwt.tokens import RefreshToken
 
 User = get_user_model()
@@ -9,7 +10,7 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('id', 'username', 'email', 'first_name', 'last_name', 'phone_number', 'profile_picture', 'is_department_staff', 'is_staff', 'is_superuser')
-        read_only_fields = ('id',)
+        read_only_fields = ('id', 'is_department_staff', 'is_staff', 'is_superuser')
 
 
 class AuthResponseSerializer(serializers.Serializer):
@@ -20,7 +21,11 @@ class AuthResponseSerializer(serializers.Serializer):
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
-    username = serializers.CharField(required=False, allow_blank=True)
+    username = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        validators=[UniqueValidator(queryset=User.objects.all())],
+    )
     access = serializers.CharField(read_only=True)
     refresh = serializers.CharField(read_only=True)
     user = UserSerializer(read_only=True)
@@ -43,6 +48,8 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if not attrs.get('username'):
             attrs['username'] = attrs['email']
+        if User.objects.filter(username=attrs['username']).exists():
+            raise serializers.ValidationError({'username': 'A user with that username already exists.'})
         return attrs
 
     def create(self, validated_data):

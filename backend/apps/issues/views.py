@@ -3,6 +3,7 @@ from math import cos, radians
 
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
@@ -10,7 +11,6 @@ from rest_framework.response import Response
 
 from .models import Issue
 from .serializers import IssueCreateSerializer, IssueSerializer, IssueCommentSerializer, IssueAttachmentSerializer
-from apps.notifications.models import Notification
 
 
 class IssueViewSet(viewsets.ModelViewSet):
@@ -74,21 +74,24 @@ class IssueViewSet(viewsets.ModelViewSet):
             pass # Citizens should see all issues to browse "Issues near me"
 
         category_filter = self.request.query_params.get('category')
-        department_filter = self.request.query_params.get('department')
-        reported_by_filter = self.request.query_params.get('reported_by')
-        assigned_to_filter = self.request.query_params.get('assigned_to')
         has_coordinates = self.request.query_params.get('has_coordinates')
         created_after = self.request.query_params.get('created_after')
         created_before = self.request.query_params.get('created_before')
 
         if category_filter:
             queryset = queryset.filter(category__iexact=category_filter)
-        if department_filter:
-            queryset = queryset.filter(department_id=department_filter)
-        if reported_by_filter:
-            queryset = queryset.filter(reported_by_id=reported_by_filter)
-        if assigned_to_filter:
-            queryset = queryset.filter(assigned_to_id=assigned_to_filter)
+
+        for param_name, field_name in (
+            ('department', 'department_id'),
+            ('reported_by', 'reported_by_id'),
+            ('assigned_to', 'assigned_to_id'),
+        ):
+            value = self.request.query_params.get(param_name)
+            if value:
+                try:
+                    queryset = queryset.filter(**{field_name: int(value)})
+                except (TypeError, ValueError):
+                    pass
 
         if has_coordinates is not None:
             normalized = has_coordinates.lower()
@@ -97,10 +100,12 @@ class IssueViewSet(viewsets.ModelViewSet):
             elif normalized == 'false':
                 queryset = queryset.filter(Q(latitude__isnull=True) | Q(longitude__isnull=True))
 
-        if created_after:
-            queryset = queryset.filter(created_at__date__gte=created_after)
-        if created_before:
-            queryset = queryset.filter(created_at__date__lte=created_before)
+        parsed_after = parse_date(created_after) if created_after else None
+        parsed_before = parse_date(created_before) if created_before else None
+        if parsed_after:
+            queryset = queryset.filter(created_at__date__gte=parsed_after)
+        if parsed_before:
+            queryset = queryset.filter(created_at__date__lte=parsed_before)
 
         queryset = self._apply_geo_filters(queryset)
 
@@ -158,17 +163,6 @@ class IssueViewSet(viewsets.ModelViewSet):
         serializer = IssueCommentSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save(issue=issue, author=request.user)
-            
-            # Notify the user who reported the issue if someone else commented on it
-            if request.user != issue.reported_by:
-                Notification.objects.create(
-                    user=issue.reported_by,
-                    notification_type='comment_added',
-                    title=f"New Comment on: {issue.title}",
-                    message=f"{request.user.get_full_name() or request.user.username} commented on your issue.",
-                    related_issue=issue
-                )
-                
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -190,21 +184,9 @@ class IssueViewSet(viewsets.ModelViewSet):
 
         status_value = request.data.get('status')
         if status_value in dict(Issue.STATUS_CHOICES):
-            old_status = issue.status
             issue.status = status_value
             issue.resolved_at = timezone.now() if status_value == 'resolved' else None
             issue.save(update_fields=['status', 'resolved_at', 'updated_at'])
-            
-            # Notify the user who reported the issue about the status change
-            if old_status != status_value and request.user != issue.reported_by:
-                Notification.objects.create(
-                    user=issue.reported_by,
-                    notification_type='status_update',
-                    title=f"Issue Status Updated",
-                    message=f"The status of your issue '{issue.title}' has been changed to {dict(Issue.STATUS_CHOICES).get(status_value, status_value)}.",
-                    related_issue=issue
-                )
-
             return Response(IssueSerializer(issue, context={'request': request}).data)
         return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
 

@@ -461,10 +461,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private updateChartData(): void {
     if (!this.issues.length) return;
     
-    const open = this.issues.filter(i => (i?.status ?? 'open').toLowerCase() === 'open').length;
-    const inProgress = this.issues.filter(i => (i?.status ?? '').toLowerCase() === 'in progress').length;
-    const resolved = this.issues.filter(i => (i?.status ?? '').toLowerCase() === 'resolved').length;
-    const closed = this.issues.filter(i => (i?.status ?? '').toLowerCase() === 'closed').length;
+    const open = this.issues.filter(i => this.normalizeStatus(i) === 'open').length;
+    const inProgress = this.issues.filter(i => this.normalizeStatus(i) === 'in progress').length;
+    const resolved = this.issues.filter(i => this.normalizeStatus(i) === 'resolved').length;
+    const closed = this.issues.filter(i => this.normalizeStatus(i) === 'closed').length;
 
     const low = this.issues.filter(i => (i?.priority ?? 'medium').toLowerCase() === 'low').length;
     const medium = this.issues.filter(i => (i?.priority ?? 'medium').toLowerCase() === 'medium').length;
@@ -597,7 +597,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   displayDate(issue: any): string {
-    return this.formatDate(issue?.createdAt ?? issue?.createdDate ?? issue?.date ?? issue?.submittedAt);
+    return this.formatDate(issue?.created_at ?? issue?.createdAt ?? issue?.createdDate ?? issue?.date ?? issue?.submittedAt);
   }
 
   notificationTitle(notification: any): string {
