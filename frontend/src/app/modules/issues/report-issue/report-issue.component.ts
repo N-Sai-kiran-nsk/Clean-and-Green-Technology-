@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, inject, AfterViewInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, AfterViewInit } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { isObservable } from 'rxjs';
@@ -75,6 +75,7 @@ import { IssueService } from '../../../core/services/issue.service';
                 class="form-control form-control-lg"
                 formControlName="location"
                 placeholder="Street, landmark, ward, or building"
+                (input)="onLocationInput()"
               />
               <div class="invalid-feedback d-block" *ngIf="isInvalid('location')">
                 Please add the location.
@@ -166,20 +167,25 @@ import { IssueService } from '../../../core/services/issue.service';
             </div>
 
             <div class="col-12">
-              <label for="photo" class="form-label fw-semibold">Photo of the issue</label>
-              <p class="text-muted small mb-2">Add one clear, well-lit photo showing the problem. Images up to 10 MB are supported.</p>
+              <label for="photo" class="form-label fw-semibold">Photos of the issue</label>
+              <p class="text-muted small mb-2">Add up to 5 clear photos, each max 10 MB.</p>
               <input
                 id="photo"
                 type="file"
                 accept="image/*"
-                capture="environment"
+                multiple
                 class="form-control"
                 (change)="onPhotoSelected($event)"
               />
               <div *ngIf="photoError" class="small text-danger mt-1">{{ photoError }}</div>
-              <div *ngIf="photoPreview" class="mt-3">
-                <img [src]="photoPreview" alt="Selected issue photo" class="img-thumbnail" style="max-height: 220px; object-fit: cover;" />
-                <button type="button" class="btn btn-sm btn-outline-danger ms-2 align-top" (click)="clearPhoto()">Remove photo</button>
+              <div *ngIf="photoFiles.length" class="mt-3">
+                <div class="d-flex flex-wrap gap-3">
+                  <div *ngFor="let preview of photoPreviews; let i = index">
+                    <img [src]="preview" [alt]="'Selected issue photo ' + (i + 1)" class="img-thumbnail" style="max-height: 160px; max-width: 200px; object-fit: cover;" />
+                    <button type="button" class="btn btn-sm btn-outline-danger mt-1" (click)="removePhoto(i)">Remove</button>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-danger mt-2" (click)="clearPhotos()">Clear all</button>
               </div>
             </div>
 
@@ -214,7 +220,7 @@ import { IssueService } from '../../../core/services/issue.service';
     </section>
   `,
 })
-export class ReportIssueComponent implements OnInit {
+export class ReportIssueComponent implements OnInit, OnDestroy {
   private readonly fb = inject(FormBuilder);
   private readonly router = inject(Router);
   private readonly issueService = inject(IssueService);
@@ -226,10 +232,13 @@ export class ReportIssueComponent implements OnInit {
   departmentsLoading = false;
   departmentErrorMessage = '';
   locationMessage = '';
-  photoFile: File | null = null;
-  photoPreview: SafeUrl | null = null;
+  photoFiles: File[] = [];
+  photoPreviews: SafeUrl[] = [];
+  photoObjectUrls: string[] = [];
   photoError = '';
-  private photoObjectUrl: string | null = null;
+  private lastAutoLocation = '';
+  private geocodeTimer: ReturnType<typeof setTimeout> | null = null;
+  private destroyed = false;
   errorMessage = '';
   successMessage = '';
 
@@ -265,6 +274,15 @@ export class ReportIssueComponent implements OnInit {
     this.loadDepartments();
   }
 
+  ngOnDestroy(): void {
+    this.destroyed = true;
+    if (this.geocodeTimer) {
+      clearTimeout(this.geocodeTimer);
+      this.geocodeTimer = null;
+    }
+    this.releasePhotoUrls();
+  }
+
   onMapReady(map: L.Map): void {
     this.map = map;
     map.invalidateSize();
@@ -275,6 +293,7 @@ export class ReportIssueComponent implements OnInit {
     this.form.patchValue({ latitude: lat, longitude: lng });
     this.locationMessage = 'Pin set on the map.';
     this.updateMarker(lat, lng);
+    this.reverseGeocode(lat, lng);
   }
 
   useMyLocation(): void {
@@ -288,14 +307,20 @@ export class ReportIssueComponent implements OnInit {
       (position) => {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
+        const existingLocation = typeof this.form.value.location === 'string' ? this.form.value.location.trim() : '';
+        const autoLocation = existingLocation || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
         this.form.patchValue({
           latitude: lat,
           longitude: lng,
-          location: this.form.value.location || `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+          location: autoLocation,
         });
+        if (!existingLocation) {
+          this.lastAutoLocation = autoLocation;
+        }
         this.map?.setView([lat, lng], 16);
         this.updateMarker(lat, lng);
         this.locationMessage = 'Location set from your device.';
+        this.reverseGeocode(lat, lng);
       },
       () => {
         this.locationMessage = 'Location access was denied or unavailable. You can still click the map to set a pin.';
@@ -306,42 +331,194 @@ export class ReportIssueComponent implements OnInit {
 
   onPhotoSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
-    const file = input.files?.[0] ?? null;
+    const selected = Array.from(input.files ?? []);
+    input.value = '';
     this.photoError = '';
 
-    if (!file) {
-      this.clearPhoto();
+    if (!selected.length) {
       return;
     }
 
-    if (!(file.type || '').toLowerCase().startsWith('image/')) {
-      this.photoError = 'Please choose an image file.';
-      input.value = '';
+    const remaining = 5 - this.photoFiles.length;
+    if (remaining <= 0) {
+      this.photoError = 'You can add up to 5 photos.';
       return;
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-      this.photoError = 'Please choose an image smaller than 10 MB.';
-      input.value = '';
-      return;
+    if (selected.length > remaining) {
+      this.photoError = 'You can add up to 5 photos.';
     }
 
-    this.photoFile = file;
-    if (this.photoObjectUrl) {
-      URL.revokeObjectURL(this.photoObjectUrl);
+    for (const file of selected.slice(0, remaining)) {
+      if (!(file.type || '').toLowerCase().startsWith('image/')) {
+        this.photoError = 'Please choose image files only.';
+        continue;
+      }
+
+      if (file.size > 10 * 1024 * 1024) {
+        this.photoError = 'Each photo must be smaller than 10 MB.';
+        continue;
+      }
+
+      this.addPhoto(file);
     }
-    this.photoObjectUrl = URL.createObjectURL(file);
-    this.photoPreview = this.sanitizer.bypassSecurityTrustUrl(this.photoObjectUrl);
   }
 
-  clearPhoto(): void {
-    if (this.photoObjectUrl) {
-      URL.revokeObjectURL(this.photoObjectUrl);
+  removePhoto(index: number): void {
+    if (index < 0 || index >= this.photoFiles.length) {
+      return;
     }
-    this.photoObjectUrl = null;
-    this.photoFile = null;
-    this.photoPreview = null;
+
+    this.photoFiles.splice(index, 1);
+    this.photoPreviews.splice(index, 1);
+    const [removedUrl] = this.photoObjectUrls.splice(index, 1);
+    if (removedUrl) {
+      URL.revokeObjectURL(removedUrl);
+    }
+  }
+
+  clearPhotos(): void {
+    this.releasePhotoUrls();
+    this.photoFiles = [];
+    this.photoPreviews = [];
     this.photoError = '';
+  }
+
+  onLocationInput(): void {
+    this.lastAutoLocation = '';
+  }
+
+  private addPhoto(file: File): void {
+    const objectUrl = URL.createObjectURL(file);
+    const index = this.photoFiles.length;
+    this.photoFiles.push(file);
+    this.photoObjectUrls.push(objectUrl);
+    this.photoPreviews.push(this.sanitizer.bypassSecurityTrustUrl(objectUrl));
+
+    void this.compressImage(file).then((processed) => {
+      if (this.destroyed || this.photoFiles[index] !== file) {
+        return;
+      }
+
+      URL.revokeObjectURL(this.photoObjectUrls[index]);
+      const nextUrl = URL.createObjectURL(processed);
+      this.photoFiles[index] = processed;
+      this.photoObjectUrls[index] = nextUrl;
+      this.photoPreviews[index] = this.sanitizer.bypassSecurityTrustUrl(nextUrl);
+    });
+  }
+
+  private async compressImage(file: File): Promise<File> {
+    let source: ImageBitmap | HTMLImageElement | null = null;
+    try {
+      source = await this.loadImage(file);
+      const width = source.width;
+      const height = source.height;
+      if (!width || !height) {
+        return file;
+      }
+
+      const scale = Math.min(1, 1600 / Math.max(width, height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(width * scale));
+      canvas.height = Math.max(1, Math.round(height * scale));
+      const context = canvas.getContext('2d');
+      if (!context) {
+        return file;
+      }
+
+      context.drawImage(source, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+      if (!blob) {
+        return file;
+      }
+
+      const originalBase = file.name.replace(/\.[^.]+$/, '') || 'photo';
+      return new File([blob], `${originalBase}-compressed.jpg`, { type: 'image/jpeg', lastModified: Date.now() });
+    } catch {
+      return file;
+    } finally {
+      if (source && typeof (source as ImageBitmap).close === 'function') {
+        (source as ImageBitmap).close();
+      }
+    }
+  }
+
+  private async loadImage(file: File): Promise<ImageBitmap | HTMLImageElement> {
+    if (typeof createImageBitmap === 'function') {
+      try {
+        return await createImageBitmap(file);
+      } catch {
+        return this.loadImageViaElement(file);
+      }
+    }
+
+    return this.loadImageViaElement(file);
+  }
+
+  private loadImageViaElement(file: File): Promise<HTMLImageElement> {
+    return new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      const url = URL.createObjectURL(file);
+      image.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(image);
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Unable to load image.'));
+      };
+      image.src = url;
+    });
+  }
+
+  private releasePhotoUrls(): void {
+    for (const url of this.photoObjectUrls) {
+      if (url) {
+        URL.revokeObjectURL(url);
+      }
+    }
+    this.photoObjectUrls = [];
+  }
+
+  private reverseGeocode(lat: number, lng: number): void {
+    if (this.geocodeTimer) {
+      clearTimeout(this.geocodeTimer);
+      this.geocodeTimer = null;
+    }
+
+    this.geocodeTimer = setTimeout(() => {
+      this.geocodeTimer = null;
+      void this.resolveLocation(lat, lng);
+    }, 400);
+  }
+
+  private async resolveLocation(lat: number, lng: number): Promise<void> {
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`,
+        { headers: { Accept: 'application/json' } }
+      );
+      if (!response.ok) {
+        throw new Error(`Reverse geocoding failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      const displayName = typeof data?.display_name === 'string' && data.display_name.trim()
+        ? data.display_name.trim()
+        : '';
+      const currentLocation = typeof this.form.value.location === 'string' ? this.form.value.location.trim() : '';
+      if (!currentLocation || currentLocation === this.lastAutoLocation) {
+        if (displayName) {
+          this.form.patchValue({ location: displayName });
+          this.lastAutoLocation = displayName;
+        }
+      }
+
+      this.locationMessage = displayName || 'Address not found. Please enter the location manually.';
+    } catch {
+      this.locationMessage = 'Could not look up the address. Please enter the location manually.';
+    }
   }
 
   private updateMarker(lat: number, lng: number): void {
@@ -352,6 +529,7 @@ export class ReportIssueComponent implements OnInit {
       this.marker.on('dragend', () => {
         const pos = this.marker!.getLatLng();
         this.form.patchValue({ latitude: pos.lat, longitude: pos.lng });
+        this.reverseGeocode(pos.lat, pos.lng);
       });
     }
   }
@@ -415,7 +593,7 @@ export class ReportIssueComponent implements OnInit {
       'saveIssue',
       'create',
       'submit',
-    ], payload, this.photoFile);
+    ], payload, this.photoFiles);
 
     this.consumeMutationResult(
       result,
@@ -436,7 +614,8 @@ export class ReportIssueComponent implements OnInit {
           contactPhone: '',
           contactEmail: '',
         });
-        this.clearPhoto();
+        this.clearPhotos();
+        this.lastAutoLocation = '';
         this.locationMessage = '';
         this.router.navigate(createdId != null ? ['/issues/detail', createdId] : ['/issues']);
       },

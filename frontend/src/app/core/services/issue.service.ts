@@ -2,6 +2,17 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
+export interface IssueQuery {
+  status?: string;
+  priority?: string;
+  search?: string;
+  department?: number | string;
+  category?: string;
+  ordering?: string;
+  page?: number;
+  pageSize?: number;
+}
+
 export interface Issue {
   id: number;
   title: string;
@@ -12,8 +23,10 @@ export interface Issue {
   location: string;
   latitude?: number;
   longitude?: number;
-  reported_by: number;
-  assigned_to?: number;
+  reported_by: number | object | null;
+  assigned_to?: number | object | null;
+  assigned_at?: string;
+  assigned_by?: number | object | null;
   department?: number;
   created_at: string;
   updated_at: string;
@@ -34,10 +47,28 @@ export class IssueService {
 
   constructor(private http: HttpClient) { }
 
-  getIssues(status?: string, priority?: string): Observable<any> {
+  getIssues(query: IssueQuery = {}): Observable<any> {
+    const raw: IssueQuery | string = query;
+    const normalized: IssueQuery = typeof raw === 'string' ? { priority: raw } : (raw ?? {});
+
     let params = new HttpParams();
-    if (status) params = params.set('status', status);
-    if (priority) params = params.set('priority', priority);
+    const keys: Array<[keyof IssueQuery, string]> = [
+      ['status', 'status'],
+      ['priority', 'priority'],
+      ['search', 'search'],
+      ['department', 'department'],
+      ['category', 'category'],
+      ['ordering', 'ordering'],
+      ['page', 'page'],
+      ['pageSize', 'page_size'],
+    ];
+
+    keys.forEach(([key, param]) => {
+      const value = normalized[key];
+      if (value !== undefined && value !== null && value !== '') {
+        params = params.set(param, String(value));
+      }
+    });
 
     return this.http.get<any>(`${this.apiUrl}/`, { params });
   }
@@ -46,18 +77,29 @@ export class IssueService {
     return this.http.get<Issue>(`${this.apiUrl}/${id}/`);
   }
 
-  createIssue(data: any, photo?: File | null): Observable<Issue> {
-    if (photo) {
+  createIssue(data: any, photos: File[] = [], legacyPhoto?: File | null): Observable<Issue> {
+    const hasPhotoArray = Array.isArray(photos);
+    const photoList: File[] = hasPhotoArray ? photos : [];
+    const legacy = hasPhotoArray ? (legacyPhoto ?? null) : ((photos as unknown as File) ?? null);
+
+    if (photoList.length > 0 || legacy) {
       const formData = new FormData();
       Object.entries(data).forEach(([key, value]) => {
         if (value !== null && value !== undefined) {
           formData.append(key, String(value));
         }
       });
-      formData.append('photo', photo, photo.name);
+      photoList.forEach(photo => formData.append('photos', photo, photo.name));
+      if (legacy) {
+        formData.append('photo', legacy, legacy.name);
+      }
       return this.http.post<Issue>(`${this.apiUrl}/`, formData);
     }
     return this.http.post<Issue>(`${this.apiUrl}/`, data);
+  }
+
+  assignIssue(id: number, assignedTo: number | null): Observable<Issue> {
+    return this.http.post<Issue>(`${this.apiUrl}/${id}/assign/`, { assigned_to: assignedTo });
   }
 
   updateIssue(id: number, data: any): Observable<Issue> {

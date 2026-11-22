@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit } from '@angular/core';
 import { IssueService } from '../../../core/services/issue.service';
+import { AuthService } from '../../../core/services/auth.service';
 
 interface IssueRecord {
   [key: string]: any;
@@ -141,12 +142,38 @@ interface IssueRecord {
                           </span>
                         }
 
+                        <span class="issue-card__meta-item">
+                          <i class="bi bi-person-check me-1"></i>
+                          Assigned to: {{ getIssueAssignee(issue) }}
+                        </span>
+
                         @if (getIssueDate(issue)) {
                           <span class="issue-card__meta-item">
                             <i class="bi bi-calendar3 me-1"></i>
                             {{ getIssueDate(issue) | date: 'mediumDate' }}
                           </span>
                         }
+                      </div>
+
+                      <div class="issue-card__assignment">
+                        <label class="form-label small mb-1" [attr.for]="'assign-' + getIssueId(issue)">Assignee</label>
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                          <select
+                            #assignSelect
+                            class="form-select form-select-sm w-auto"
+                            [attr.id]="'assign-' + getIssueId(issue)"
+                            [disabled]="isBusy"
+                            (change)="assignIssue(issue, assignSelect.value)"
+                          >
+                            <option value="" [selected]="!getAssigneeValue(issue)">Unassigned</option>
+                            @for (user of staffUsers; track staffTrack(user)) {
+                              <option [value]="staffId(user)" [selected]="getAssigneeValue(issue) === staffId(user)">
+                                {{ staffName(user) }}
+                              </option>
+                            }
+                          </select>
+                          <span class="text-body-secondary small">Change to reassign this issue.</span>
+                        </div>
                       </div>
                     </div>
 
@@ -299,6 +326,10 @@ interface IssueRecord {
         font-size: 0.875rem;
       }
 
+      .issue-card__assignment {
+        margin-top: 0.85rem;
+      }
+
       .issue-card__actions {
         display: flex;
         flex: 0 0 auto;
@@ -340,14 +371,19 @@ interface IssueRecord {
 })
 export class ManageIssuesComponent implements OnInit {
   issues: IssueRecord[] = [];
+  staffUsers: any[] = [];
   loading = false;
   actionLoading = false;
   errorMessage = '';
   successMessage = '';
 
-  constructor(private readonly issueService: IssueService) {}
+  constructor(
+    private readonly issueService: IssueService,
+    private readonly authService: AuthService
+  ) {}
 
   ngOnInit(): void {
+    this.loadStaff();
     this.loadIssues();
   }
 
@@ -378,7 +414,7 @@ export class ManageIssuesComponent implements OnInit {
     }
 
     try {
-      const result = loader.apply(service, []);
+      const result = loader.apply(service, [{ pageSize: 1000 }]);
 
       this.subscribeLike(
         result,
@@ -397,6 +433,18 @@ export class ManageIssuesComponent implements OnInit {
       this.loading = false;
       this.errorMessage = 'Unable to load issues right now.';
     }
+  }
+
+  private loadStaff(): void {
+    this.subscribeLike(
+      this.authService.getStaffList(),
+      (payload: any) => {
+        this.staffUsers = this.normalizeStaff(payload);
+      },
+      () => {
+        this.staffUsers = [];
+      }
+    );
   }
 
   setAsResolved(issue: IssueRecord): void {
@@ -548,6 +596,103 @@ export class ManageIssuesComponent implements OnInit {
     return issue?.createdAt ?? issue?.created_at ?? issue?.updatedAt ?? issue?.updated_at ?? null;
   }
 
+  getIssueAssignee(issue: IssueRecord): string {
+    const value = issue?.['assigned_to'] ?? issue?.['assignedTo'] ?? issue?.['assignee'] ?? null;
+    if (value == null || value === '') {
+      return 'Unassigned';
+    }
+
+    const fromStaff = this.staffUsers.find(user => this.staffId(user) === this.getAssigneeValue(issue));
+    if (fromStaff) {
+      return this.staffName(fromStaff);
+    }
+
+    if (typeof value === 'object') {
+      return this.staffName(value);
+    }
+
+    return `User #${value}`;
+  }
+
+  getAssigneeValue(issue: IssueRecord): string {
+    const value = issue?.['assigned_to'] ?? issue?.['assignedTo'] ?? issue?.['assignee'] ?? null;
+    if (value == null || value === '') {
+      return '';
+    }
+    if (typeof value === 'object') {
+      return String(value.id ?? value.user_id ?? value.pk ?? '');
+    }
+    return String(value);
+  }
+
+  staffId(user: any): string {
+    return String(user?.id ?? user?.user_id ?? user?.pk ?? user?._id ?? '');
+  }
+
+  staffName(user: any): string {
+    const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(' ').trim();
+    return String(user?.username || fullName || user?.full_name || user?.name || user?.email || `User #${this.staffId(user)}`);
+  }
+
+  staffTrack(user: any): string {
+    return this.staffId(user) || this.staffName(user);
+  }
+
+  assignIssue(issue: IssueRecord, assignedToValue: string): void {
+    const id = this.getIssueId(issue);
+    const numericId = id == null ? NaN : Number(id);
+    if (!Number.isFinite(numericId)) {
+      this.errorMessage = 'This issue could not be identified for assignment.';
+      return;
+    }
+
+    const raw = assignedToValue === '' || assignedToValue === 'null' ? null : assignedToValue;
+    const assignedTo = raw == null ? null : Number(raw);
+    if (assignedTo !== null && !Number.isFinite(assignedTo)) {
+      this.errorMessage = 'Please choose a valid staff member.';
+      return;
+    }
+
+    const service: any = this.issueService;
+    if (typeof service.assignIssue !== 'function') {
+      this.errorMessage = 'Assignment is not available right now.';
+      return;
+    }
+
+    this.actionLoading = true;
+    this.errorMessage = '';
+    this.successMessage = '';
+
+    try {
+      this.subscribeLike(
+        service.assignIssue.call(service, numericId, assignedTo),
+        (payload: any) => {
+          this.actionLoading = false;
+          this.successMessage = 'Assignee updated successfully.';
+          const updated = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+          issue['assigned_to'] = updated && 'assigned_to' in updated ? updated['assigned_to'] : assignedTo;
+          if (updated?.['assigned_at'] !== undefined) {
+            issue['assigned_at'] = updated['assigned_at'];
+          }
+        },
+        () => {
+          this.actionLoading = false;
+          this.errorMessage = 'The assignee could not be updated. Please try again.';
+        }
+      );
+    } catch {
+      this.actionLoading = false;
+      this.errorMessage = 'The assignee could not be updated. Please try again.';
+    }
+  }
+
+  private normalizeStaff(payload: any): any[] {
+    const items = Array.isArray(payload)
+      ? payload
+      : (payload?.results ?? payload?.users ?? payload?.data ?? []);
+    return Array.isArray(items) ? items : [];
+  }
+
   private updateIssueStatus(issue: IssueRecord, status: string): void {
     const service: any = this.issueService;
     const updater =
@@ -627,7 +772,7 @@ export class ManageIssuesComponent implements OnInit {
       .replace(/\s+/g, '_');
   }
 
-  private getIssueId(issue: IssueRecord): number | string | null {
+  getIssueId(issue: IssueRecord): number | string | null {
     return issue?.id ?? issue?._id ?? issue?.issue_id ?? null;
   }
 

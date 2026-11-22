@@ -72,6 +72,11 @@ import { AuthService } from '../../../core/services/auth.service';
               </div>
 
               <div class="col-12 col-md-6">
+                <dt class="text-muted small text-uppercase">Assigned to</dt>
+                <dd class="mb-0">{{ assigneeLabel(issue) }}</dd>
+              </div>
+
+              <div class="col-12 col-md-6">
                 <dt class="text-muted small text-uppercase">Contact</dt>
                 <dd class="mb-0">{{ contactLabel(issue) }}</dd>
               </div>
@@ -132,6 +137,20 @@ import { AuthService } from '../../../core/services/auth.service';
                 Mark as resolved
               </button>
             </div>
+
+            <div class="mt-3">
+              <label for="issueAssignee" class="form-label small mb-1">Assign to</label>
+              <select id="issueAssignee" #assignSelect class="form-select form-select-sm" (change)="assignIssue(assignSelect.value)">
+                <option value="" [selected]="!assigneeValue(issue)">Unassigned</option>
+                <option
+                  *ngFor="let user of staffUsers; trackBy: trackByStaff"
+                  [value]="staffId(user)"
+                  [selected]="assigneeValue(issue) === staffId(user)"
+                >
+                  {{ staffName(user) }}
+                </option>
+              </select>
+            </div>
           </div>
         </div>
       </div>
@@ -173,10 +192,12 @@ export class IssueDetailComponent implements OnInit {
 
   issueId = '';
   issue: any = null;
+  staffUsers: any[] = [];
   loading = false;
   errorMessage = '';
 
   ngOnInit(): void {
+    this.loadStaff();
     this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
       this.issueId = params.get('id') ?? '';
       this.loadIssue();
@@ -284,6 +305,91 @@ export class IssueDetailComponent implements OnInit {
       }
     });
   }
+
+  private loadStaff(): void {
+    if (!this.isAdmin) {
+      return;
+    }
+
+    this.authService.getStaffList().subscribe({
+      next: (response: any) => {
+        const items = Array.isArray(response)
+          ? response
+          : (response?.results ?? response?.users ?? response?.data ?? []);
+        this.staffUsers = Array.isArray(items) ? items : [];
+      },
+      error: () => {
+        this.staffUsers = [];
+      }
+    });
+  }
+
+  assignIssue(assignedToValue: string): void {
+    const numericId = Number(this.issueId);
+    if (!Number.isFinite(numericId)) {
+      this.errorMessage = 'This issue could not be identified for assignment.';
+      return;
+    }
+
+    const raw = assignedToValue === '' || assignedToValue === 'null' ? null : assignedToValue;
+    const assignedTo = raw == null ? null : Number(raw);
+    if (assignedTo !== null && !Number.isFinite(assignedTo)) {
+      this.errorMessage = 'Please choose a valid staff member.';
+      return;
+    }
+
+    const result = this.invokeFallback(this.issueService as any, ['assignIssue'], numericId, assignedTo);
+    this.consumeMutationResult(
+      result,
+      () => {
+        this.errorMessage = '';
+        this.loadIssue();
+      },
+      () => {
+        this.errorMessage = 'The assignee could not be updated. Please try again.';
+      }
+    );
+  }
+
+  assigneeLabel(issue: any): string {
+    const value = issue?.assigned_to ?? issue?.assignedTo ?? issue?.assignee ?? null;
+    if (value == null || value === '') {
+      return 'Unassigned';
+    }
+
+    const fromStaff = this.staffUsers.find(user => this.staffId(user) === this.assigneeValue(issue));
+    if (fromStaff) {
+      return this.staffName(fromStaff);
+    }
+
+    if (typeof value === 'object') {
+      return this.staffName(value);
+    }
+
+    return `User #${value}`;
+  }
+
+  assigneeValue(issue: any): string {
+    const value = issue?.assigned_to ?? issue?.assignedTo ?? issue?.assignee ?? null;
+    if (value == null || value === '') {
+      return '';
+    }
+    if (typeof value === 'object') {
+      return String(value.id ?? value.user_id ?? value.pk ?? '');
+    }
+    return String(value);
+  }
+
+  staffId(user: any): string {
+    return String(user?.id ?? user?.user_id ?? user?.pk ?? user?._id ?? '');
+  }
+
+  staffName(user: any): string {
+    const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(' ').trim();
+    return String(user?.username || fullName || user?.full_name || user?.name || user?.email || `User #${this.staffId(user)}`);
+  }
+
+  trackByStaff = (index: number, user: any): string | number => this.staffId(user) || index;
 
   issueTitle(issue: any): string {
     return this.toText(issue?.title ?? issue?.subject ?? issue?.name ?? 'Untitled issue');

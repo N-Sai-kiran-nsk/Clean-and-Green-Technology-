@@ -1,5 +1,5 @@
 from rest_framework import viewsets, status
-from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.decorators import api_view, permission_classes, throttle_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.contrib.auth import get_user_model
@@ -12,12 +12,14 @@ from .serializers import (
     UserSerializer, UserRegistrationSerializer, UserLoginSerializer,
     PasswordResetRequestSerializer, PasswordResetConfirmSerializer
 )
+from .throttling import AuthRateThrottle
 
 User = get_user_model()
 
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([AuthRateThrottle])
 def register(request):
     """User registration endpoint"""
     serializer = UserRegistrationSerializer(data=request.data)
@@ -32,6 +34,7 @@ def register(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([AuthRateThrottle])
 def login(request):
     """User login endpoint"""
     serializer = UserLoginSerializer(data=request.data)
@@ -67,6 +70,7 @@ def update_profile(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([AuthRateThrottle])
 def request_password_reset(request):
     serializer = PasswordResetRequestSerializer(data=request.data)
     if serializer.is_valid():
@@ -93,6 +97,7 @@ def request_password_reset(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([AuthRateThrottle])
 def reset_password(request):
     serializer = PasswordResetConfirmSerializer(data=request.data)
     if serializer.is_valid():

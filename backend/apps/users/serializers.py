@@ -9,8 +9,8 @@ User = get_user_model()
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'phone_number', 'profile_picture', 'is_department_staff', 'is_staff', 'is_superuser')
-        read_only_fields = ('id', 'is_department_staff', 'is_staff', 'is_superuser')
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'phone_number', 'profile_picture', 'department', 'is_department_staff', 'is_staff', 'is_superuser')
+        read_only_fields = ('id', 'department', 'is_department_staff', 'is_staff', 'is_superuser')
 
 
 class AuthResponseSerializer(serializers.Serializer):

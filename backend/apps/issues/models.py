@@ -34,6 +34,8 @@ class Issue(models.Model):
     # Relationships
     reported_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reported_issues')
     assigned_to = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_issues')
+    assigned_at = models.DateTimeField(null=True, blank=True)
+    assigned_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_by_issues')
     department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name='issues')
     upvotes = models.ManyToManyField(User, related_name='upvoted_issues', blank=True)
 

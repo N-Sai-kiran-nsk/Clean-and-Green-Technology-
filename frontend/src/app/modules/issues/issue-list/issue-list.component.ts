@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { isObservable } from 'rxjs';
 import * as L from 'leaflet';
-import { IssueService } from '../../../core/services/issue.service';
+import { IssueQuery, IssueService } from '../../../core/services/issue.service';
 import { DepartmentService } from '../../../core/services/department.service';
 
 @Component({
@@ -102,7 +102,7 @@ import { DepartmentService } from '../../../core/services/department.service';
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-3">
           <div>
             <h2 class="h5 mb-1">Results</h2>
-            <p class="text-secondary mb-0">{{ filteredIssues.length }} issues found</p>
+            <p class="text-secondary mb-0">{{ totalCount }} issues found</p>
           </div>
         </div>
 
@@ -154,6 +154,26 @@ import { DepartmentService } from '../../../core/services/department.service';
             <p class="mb-0 text-muted">No issues with location data match your filters.</p>
           </div>
         </div>
+
+        <nav *ngIf="totalPages > 1" class="d-flex flex-wrap justify-content-center align-items-center gap-2 mt-4" aria-label="Issue pagination">
+          <button type="button" class="btn btn-outline-secondary btn-sm" [disabled]="currentPage <= 1 || loading" (click)="goToPage(currentPage - 1)">
+            Previous
+          </button>
+          <button
+            type="button"
+            class="btn btn-sm"
+            *ngFor="let page of pageNumbers"
+            [class.btn-primary]="page === currentPage"
+            [class.btn-outline-primary]="page !== currentPage"
+            [disabled]="page === currentPage || loading"
+            (click)="goToPage(page)"
+          >
+            {{ page }}
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" [disabled]="currentPage >= totalPages || loading" (click)="goToPage(currentPage + 1)">
+            Next
+          </button>
+        </nav>
       </div>
     </section>
   `,
@@ -180,6 +200,10 @@ export class IssueListComponent implements OnInit {
 
   issues: any[] = [];
   departments: any[] = [];
+  totalCount = 0;
+  totalPages = 0;
+  currentPage = 1;
+  pageSize = 20;
   loading = false;
   errorMessage = '';
   searchTerm = '';
@@ -213,28 +237,15 @@ export class IssueListComponent implements OnInit {
   }
 
   get filteredIssues(): any[] {
-    const search = this.searchTerm.trim().toLowerCase();
+    return this.issues;
+  }
 
-    return this.issues.filter((issue) => {
-      const matchesSearch =
-        !search ||
-        this.issueTitle(issue).toLowerCase().includes(search) ||
-        this.issueDescription(issue).toLowerCase().includes(search) ||
-        this.departmentLabel(issue).toLowerCase().includes(search) ||
-        this.locationLabel(issue).toLowerCase().includes(search);
-
-      const matchesStatus =
-        this.selectedStatus === 'all' || this.normalizeStatus(issue) === this.selectedStatus.toLowerCase();
-
-      const matchesDepartment =
-        this.selectedDepartment === 'all' || String(issue?.department ?? '') === this.selectedDepartment;
-
-      const issuePriority = (issue?.priority || '').toLowerCase();
-      const matchesPriority = 
-        this.selectedPriority === 'all' || issuePriority === this.selectedPriority;
-
-      return matchesSearch && matchesStatus && matchesDepartment && matchesPriority;
-    });
+  get pageNumbers(): number[] {
+    const pages: number[] = [];
+    for (let page = 1; page <= this.totalPages; page++) {
+      pages.push(page);
+    }
+    return pages;
   }
 
   get filteredIssuesWithCoords(): any[] {
@@ -251,6 +262,15 @@ export class IssueListComponent implements OnInit {
     this.loading = true;
     this.errorMessage = '';
 
+    const query: IssueQuery = {
+      search: this.searchTerm.trim() || undefined,
+      status: this.selectedStatus !== 'all' ? this.selectedStatus : undefined,
+      department: this.selectedDepartment !== 'all' ? this.selectedDepartment : undefined,
+      priority: this.selectedPriority !== 'all' ? this.selectedPriority : undefined,
+      page: this.currentPage,
+      pageSize: this.pageSize,
+    };
+
     const result = this.invokeFallback(this.issueService as any, [
       'getIssues',
       'loadIssues',
@@ -260,21 +280,49 @@ export class IssueListComponent implements OnInit {
       'getIssueList',
       'getAll',
       'getCitizenIssues',
-    ]);
+    ], query);
 
     this.consumeListResult(
       result,
-      (items) => {
-        this.issues = items;
-        this.loading = false;
-        this.onFiltersChanged();
-      },
+      (items, payload) => this.applyListPayload(items, payload),
       () => {
         this.issues = [];
+        this.totalCount = 0;
+        this.totalPages = 0;
         this.loading = false;
         this.errorMessage = 'Unable to load issues at the moment.';
       }
     );
+  }
+
+  goToPage(page: number): void {
+    if (page < 1 || page > this.totalPages || page === this.currentPage) {
+      return;
+    }
+    this.currentPage = page;
+    this.loadIssues();
+  }
+
+  private applyListPayload(items: any[], payload: any): void {
+    this.issues = items;
+
+    const count = Array.isArray(payload) ? payload.length : Number(payload?.count);
+    this.totalCount = Number.isFinite(count) ? count : items.length;
+    this.totalPages = this.pageSize > 0 ? Math.ceil(this.totalCount / this.pageSize) : 0;
+
+    if (this.currentPage < 1) {
+      this.currentPage = 1;
+    }
+    if (this.totalPages > 0 && this.currentPage > this.totalPages) {
+      this.currentPage = this.totalPages;
+      this.loadIssues();
+      return;
+    }
+
+    this.loading = false;
+    if (this.viewMode === 'map') {
+      this.updateMapMarkers();
+    }
   }
 
   clearFilters(): void {
@@ -286,6 +334,8 @@ export class IssueListComponent implements OnInit {
   }
 
   onFiltersChanged(): void {
+    this.currentPage = 1;
+    this.loadIssues();
     if (this.viewMode === 'map') {
       this.updateMapMarkers();
     }
@@ -460,17 +510,17 @@ export class IssueListComponent implements OnInit {
 
   private consumeListResult(
     result: unknown,
-    onSuccess: (items: any[]) => void,
+    onSuccess: (items: any[], payload?: any) => void,
     onError: (error: unknown) => void
   ): void {
     if (Array.isArray(result)) {
-      onSuccess(this.normalizeArray(result));
+      onSuccess(this.normalizeArray(result), result);
       return;
     }
 
     if (isObservable(result)) {
       result.subscribe({
-        next: (value) => onSuccess(this.normalizeArray(value)),
+        next: (value) => onSuccess(this.normalizeArray(value), value),
         error: onError,
       });
       return;
@@ -478,7 +528,7 @@ export class IssueListComponent implements OnInit {
 
     if (result && typeof (result as Promise<unknown>).then === 'function') {
       (result as Promise<unknown>)
-        .then((value) => onSuccess(this.normalizeArray(value)))
+        .then((value) => onSuccess(this.normalizeArray(value), value))
         .catch(onError);
       return;
     }

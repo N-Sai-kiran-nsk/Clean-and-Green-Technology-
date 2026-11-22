@@ -1,9 +1,14 @@
+import tempfile
+
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.departments.models import Department
-from apps.issues.models import Issue
+from apps.issues.models import Issue, IssueAttachment
+from apps.notifications.models import Notification
 
 User = get_user_model()
 
@@ -11,7 +16,7 @@ User = get_user_model()
 class IssueAPITestCase(APITestCase):
     def setUp(self):
         self.department = Department.objects.create(
-            name='Sanitation',
+            name='Test Sanitation',
             email='sanitation@example.com',
             phone='1234567890',
             address='123 Civic Center',
@@ -20,7 +25,7 @@ class IssueAPITestCase(APITestCase):
         )
 
         self.other_department = Department.objects.create(
-            name='Roads',
+            name='Test Roads',
             email='roads@example.com',
             phone='0987654321',
             address='456 City Hall',
@@ -226,3 +231,82 @@ class IssueAPITestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         returned_ids = {issue['id'] for issue in response.data['results']}
         self.assertEqual(returned_ids, {self.citizen_issue.id, self.assigned_issue.id})
+
+    def test_assign_issue_creates_notification(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.post(
+            f'/api/issues/{self.citizen_issue.id}/assign/',
+            {'assigned_to': self.department_staff.id},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.citizen_issue.refresh_from_db()
+        self.assertEqual(self.citizen_issue.assigned_to, self.department_staff)
+        self.assertEqual(self.citizen_issue.assigned_by, self.admin_user)
+        self.assertIsNotNone(self.citizen_issue.assigned_at)
+        self.assertTrue(Notification.objects.filter(
+            user=self.department_staff,
+            notification_type='issue_assigned',
+            related_issue=self.citizen_issue,
+        ).exists())
+        self.assertEqual(response.data['assigned_to']['id'], self.department_staff.id)
+
+    def test_citizen_cannot_assign_issue(self):
+        self.client.force_authenticate(user=self.citizen)
+
+        response = self.client.post(
+            f'/api/issues/{self.citizen_issue.id}/assign/',
+            {'assigned_to': self.department_staff.id},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_create_issue_with_multiple_photos(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            self.client.force_authenticate(user=self.citizen)
+
+            response = self.client.post(
+                self.issue_list_url,
+                {
+                    'title': 'Issue with two photos',
+                    'description': 'Needs two photos',
+                    'category': 'sanitation',
+                    'location': 'Ward 4',
+                    'photos': [
+                        SimpleUploadedFile('first.png', b'first', content_type='image/png'),
+                        SimpleUploadedFile('second.jpg', b'second', content_type='image/jpeg'),
+                    ],
+                },
+                format='multipart',
+            )
+
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+            self.assertEqual(IssueAttachment.objects.filter(issue_id=response.data['id']).count(), 2)
+
+    def test_create_issue_rejects_invalid_image(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            self.client.force_authenticate(user=self.citizen)
+            payload = {
+                'title': 'Invalid photo issue',
+                'description': 'File is not an image',
+                'category': 'sanitation',
+                'location': 'Ward 5',
+            }
+
+            response = self.client.post(
+                self.issue_list_url,
+                dict(payload, photo=SimpleUploadedFile('notes.txt', b'notes', content_type='text/plain')),
+                format='multipart',
+            )
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+            response = self.client.post(
+                self.issue_list_url,
+                dict(payload, photos=[SimpleUploadedFile('notes.txt', b'notes', content_type='text/plain')]),
+                format='multipart',
+            )
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertEqual(IssueAttachment.objects.count(), 0)

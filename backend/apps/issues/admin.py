@@ -4,8 +4,8 @@ from .models import Issue, IssueAttachment, IssueComment
 
 @admin.register(Issue)
 class IssueAdmin(admin.ModelAdmin):
-    list_display = ('title', 'status', 'priority', 'reported_by', 'created_at')
-    list_filter = ('status', 'priority', 'created_at')
+    list_display = ('title', 'status', 'priority', 'reported_by', 'assigned_to', 'department', 'created_at')
+    list_filter = ('status', 'priority', 'assigned_to', 'department', 'created_at')
     search_fields = ('title', 'description')
 
 

@@ -1,6 +1,7 @@
 from math import cos, radians
 
 
+from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -9,8 +10,11 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
+from apps.notifications.utils import send_notification
 from .models import Issue
 from .serializers import IssueCreateSerializer, IssueSerializer, IssueCommentSerializer, IssueAttachmentSerializer
+
+User = get_user_model()
 
 
 class IssueViewSet(viewsets.ModelViewSet):
@@ -58,10 +62,12 @@ class IssueViewSet(viewsets.ModelViewSet):
         queryset = Issue.objects.select_related(
             'reported_by',
             'assigned_to',
+            'assigned_by',
             'department',
         ).prefetch_related(
             'attachments',
             'comments__author',
+            'upvotes',
         )
 
         if not user.is_authenticated:
@@ -116,6 +122,10 @@ class IssueViewSet(viewsets.ModelViewSet):
             return IssueCreateSerializer
         return IssueSerializer
 
+    def get_throttles(self):
+        self.throttle_scope = 'issue_create' if self.action == 'create' else None
+        return super().get_throttles()
+
     def _can_manage_issue(self, issue):
         user = self.request.user
         if user.is_superuser or user.is_staff:
@@ -132,7 +142,7 @@ class IssueViewSet(viewsets.ModelViewSet):
             return True
 
         if getattr(user, 'is_department_staff', False):
-            return True
+            return issue.department_id == user.department_id or issue.assigned_to_id == user.id
 
         return False
 
@@ -176,6 +186,44 @@ class IssueViewSet(viewsets.ModelViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'])
+    def assign(self, request, pk=None):
+        issue = self.get_object()
+        user = request.user
+        is_admin = user.is_superuser or user.is_staff
+        is_department_staff = getattr(user, 'is_department_staff', False)
+
+        if not is_admin and not is_department_staff:
+            return Response({'detail': 'You do not have permission to assign issues.'}, status=status.HTTP_403_FORBIDDEN)
+        if not is_admin and issue.department_id != user.department_id and issue.assigned_to_id != user.id:
+            return Response({'detail': 'You do not have permission to assign this issue.'}, status=status.HTTP_403_FORBIDDEN)
+
+        assignee_value = request.data.get('assigned_to')
+        assignee = None
+        if assignee_value not in (None, '', 'null'):
+            try:
+                assignee = User.objects.get(pk=int(assignee_value), is_active=True)
+            except (TypeError, ValueError, User.DoesNotExist):
+                return Response({'assigned_to': 'An active user with this id does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        assignee_id = assignee.id if assignee else None
+        assignee_changed = issue.assigned_to_id != assignee_id
+        issue.assigned_to = assignee
+        issue.assigned_at = timezone.now() if assignee else None
+        issue.assigned_by = user
+        issue.save(update_fields=['assigned_to', 'assigned_at', 'assigned_by', 'updated_at'])
+
+        if assignee_changed and assignee:
+            send_notification(
+                user_id=assignee.id,
+                title=f'Issue Assigned: {issue.title}',
+                message=f'You have been assigned to the issue "{issue.title}".',
+                notification_type='issue_assigned',
+                issue_id=issue.id,
+            )
+
+        return Response(IssueSerializer(issue, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'])
     def update_status(self, request, pk=None):
         issue = self.get_object()
 
@@ -186,6 +234,7 @@ class IssueViewSet(viewsets.ModelViewSet):
         if status_value in dict(Issue.STATUS_CHOICES):
             issue.status = status_value
             issue.resolved_at = timezone.now() if status_value == 'resolved' else None
+            issue._actor = request.user
             issue.save(update_fields=['status', 'resolved_at', 'updated_at'])
             return Response(IssueSerializer(issue, context={'request': request}).data)
         return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)

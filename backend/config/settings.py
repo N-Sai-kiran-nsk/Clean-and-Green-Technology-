@@ -4,6 +4,7 @@ Django settings for civic-issue-reporting project.
 
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 from decouple import config
 import dj_database_url
 
@@ -138,7 +139,6 @@ if FRONTEND_BUILD_DIR.exists():
 elif FRONTEND_DIST_DIR.exists():
     STATICFILES_DIRS.append(FRONTEND_DIST_DIR)
 
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 WHITENOISE_INDEX_FILE = True
 WHITENOISE_ROOT = STATIC_ROOT
 
@@ -146,17 +146,47 @@ WHITENOISE_ROOT = STATIC_ROOT
 USE_S3 = config('USE_S3', default=False, cast=bool)
 USE_CLOUDINARY = config('USE_CLOUDINARY', default=False, cast=bool)
 
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+SERVE_MEDIA_LOCALLY = not USE_S3 and not USE_CLOUDINARY
+
+AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='')
+AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default='')
+AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME', default='')
+AWS_S3_ENDPOINT_URL = config('AWS_S3_ENDPOINT_URL', default='') or None
+AWS_S3_REGION_NAME = config('AWS_S3_REGION_NAME', default='auto' if AWS_S3_ENDPOINT_URL else 'us-east-1')
+AWS_S3_SIGNATURE_VERSION = config('AWS_S3_SIGNATURE_VERSION', default='s3v4')
+AWS_S3_CUSTOM_DOMAIN = config('AWS_S3_CUSTOM_DOMAIN', default='') or config('AWS_MEDIA_CUSTOM_DOMAIN', default='')
+AWS_MEDIA_CUSTOM_DOMAIN = config('AWS_MEDIA_CUSTOM_DOMAIN', default='') or AWS_S3_CUSTOM_DOMAIN
+AWS_LOCATION = config('AWS_LOCATION', default='media').strip('/') or 'media'
+AWS_QUERYSTRING_AUTH = False
+AWS_S3_FILE_OVERWRITE = False
+AWS_S3_OBJECT_PARAMETERS = {'CacheControl': 'max-age=86400'}
+
+if AWS_S3_ENDPOINT_URL:
+    AWS_S3_ENDPOINT_URL = AWS_S3_ENDPOINT_URL.rstrip('/')
+
+if AWS_S3_CUSTOM_DOMAIN:
+    AWS_S3_CUSTOM_DOMAIN = urlparse(AWS_S3_CUSTOM_DOMAIN).netloc or AWS_S3_CUSTOM_DOMAIN
+
+if AWS_MEDIA_CUSTOM_DOMAIN:
+    AWS_MEDIA_CUSTOM_DOMAIN = urlparse(AWS_MEDIA_CUSTOM_DOMAIN).netloc or AWS_MEDIA_CUSTOM_DOMAIN
+
+if not AWS_S3_CUSTOM_DOMAIN and AWS_STORAGE_BUCKET_NAME:
+    if AWS_S3_ENDPOINT_URL:
+        AWS_S3_CUSTOM_DOMAIN = urlparse(AWS_S3_ENDPOINT_URL).netloc
+    else:
+        AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com'
+
+if not AWS_MEDIA_CUSTOM_DOMAIN:
+    AWS_MEDIA_CUSTOM_DOMAIN = AWS_S3_CUSTOM_DOMAIN
+
 if USE_S3:
     if 'storages' not in INSTALLED_APPS:
         INSTALLED_APPS.append('storages')
-    AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='')
-    AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default='')
-    AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME', default='')
-    AWS_S3_REGION_NAME = config('AWS_S3_REGION_NAME', default='us-east-1')
-    AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
-    AWS_S3_OBJECT_PARAMETERS = {'CacheControl': 'max-age=86400'}
-    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
-    MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/'
+    default_storage_backend = 'storages.backends.s3boto3.S3Boto3Storage'
+    if AWS_MEDIA_CUSTOM_DOMAIN:
+        MEDIA_URL = f'https://{AWS_MEDIA_CUSTOM_DOMAIN}/{AWS_LOCATION}/'
 elif USE_CLOUDINARY:
     if 'cloudinary_storage' not in INSTALLED_APPS:
         INSTALLED_APPS.extend(['cloudinary_storage', 'cloudinary'])
@@ -165,11 +195,34 @@ elif USE_CLOUDINARY:
         'API_KEY': config('CLOUDINARY_API_KEY', default=''),
         'API_SECRET': config('CLOUDINARY_API_SECRET', default=''),
     }
-    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-    MEDIA_URL = '/media/'
+    default_storage_backend = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 else:
-    MEDIA_URL = '/media/'
-    MEDIA_ROOT = BASE_DIR / 'media'
+    default_storage_backend = 'django.core.files.storage.FileSystemStorage'
+
+STORAGES = {
+    'default': {
+        'BACKEND': default_storage_backend,
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
+
+SENTRY_DSN = config('SENTRY_DSN', default='')
+SENTRY_ENVIRONMENT = config('SENTRY_ENVIRONMENT', default='development')
+
+if SENTRY_DSN:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.django import DjangoIntegration
+
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            environment=SENTRY_ENVIRONMENT,
+            integrations=[DjangoIntegration()],
+        )
+    except ImportError:
+        pass
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -201,8 +254,17 @@ REST_FRAMEWORK = {
         'rest_framework.filters.SearchFilter',
         'rest_framework.filters.OrderingFilter',
     ],
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'DEFAULT_PAGINATION_CLASS': 'config.pagination.StandardResultsSetPagination',
     'PAGE_SIZE': 10,
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.ScopedRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'auth': '10/min',
+        'issue_create': '10/hour',
+        'user': '120/min',
+        'anon': '30/min',
+    },
 }
 
 # CORS Configuration
@@ -214,6 +276,28 @@ ASGI_APPLICATION = 'config.asgi.application'
 
 REDIS_URL = config('REDIS_URL', default=None)
 REDIS_HOST = config('REDIS_HOST', default=None)
+REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
+
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+        }
+    }
+elif REDIS_HOST:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': f'redis://{REDIS_HOST}:{REDIS_PORT}/1',
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        }
+    }
 
 if REDIS_URL:
     CHANNEL_LAYERS = {
@@ -229,7 +313,7 @@ elif REDIS_HOST:
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
             "CONFIG": {
-                "hosts": [(REDIS_HOST, config('REDIS_PORT', default=6379, cast=int))],
+                "hosts": [(REDIS_HOST, REDIS_PORT)],
             },
         }
     }

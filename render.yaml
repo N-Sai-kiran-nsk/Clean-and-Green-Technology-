@@ -23,6 +23,24 @@ services:
         value: "--max-old-space-size=512"
       - key: USE_S3
         value: "False"
+      - key: USE_CLOUDINARY
+        value: "False"
+      - key: REDIS_URL
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_STORAGE_BUCKET_NAME
+        sync: false
+      - key: AWS_S3_ENDPOINT_URL
+        sync: false
+      - key: AWS_S3_CUSTOM_DOMAIN
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        sync: false
 
 databases:
   - name: civic-db

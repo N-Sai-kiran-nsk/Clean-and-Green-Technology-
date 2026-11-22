@@ -32,7 +32,7 @@ def _safe_group_send(group_name, payload):
 
 def send_notification(user_id, title, message, notification_type, issue_id=None):
     """
-    Send a real-time notification to a specific user via WebSocket.
+    Persist a notification and send it to the user's notification group.
 
     Args:
         user_id: ID of the user to notify
@@ -41,19 +41,29 @@ def send_notification(user_id, title, message, notification_type, issue_id=None)
         notification_type: Type of notification (e.g., 'issue_assigned')
         issue_id: Optional ID of related issue
     """
-    group_name = f'user_{user_id}_notifications'
+    from apps.notifications.models import Notification
+
+    user_id = getattr(user_id, 'pk', user_id)
+    notification = Notification.objects.create(
+        user_id=user_id,
+        notification_type=notification_type,
+        title=title,
+        message=message,
+        related_issue_id=issue_id,
+    )
 
     _safe_group_send(
-        group_name,
+        f'user_{user_id}_notifications',
         {
             'type': 'notification_message',
-            'notification_id': None,  # Will be set when saved to DB
+            'notification_id': notification.pk,
             'title': title,
             'message': message,
             'issue_id': issue_id,
-            'created_at': None,  # Will be set when saved to DB
+            'created_at': notification.created_at.isoformat() if notification.created_at else None,
         }
     )
+    return notification
 
 
 def send_issue_update(issue_id, status, updated_by=None):

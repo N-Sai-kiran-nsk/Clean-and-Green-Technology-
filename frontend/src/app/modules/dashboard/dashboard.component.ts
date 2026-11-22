@@ -441,7 +441,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       'getIssueList',
       'getAll',
       'getCitizenIssues',
-    ]);
+    ], { pageSize: 1000 });
 
     this.consumeListResult(
       result,
